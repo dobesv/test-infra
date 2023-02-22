@@ -155,6 +155,7 @@ func main() {
 		podClients:    buildClusterClients,
 		config:        cfg,
 		runOnce:       o.runOnce,
+		dryRun:        o.dryRun,
 	}
 	if err := mgr.Add(&c); err != nil {
 		logrus.WithError(err).Fatal("failed to add controller to manager")
@@ -172,6 +173,7 @@ type controller struct {
 	podClients    map[string]ctrlruntimeclient.Client
 	config        config.Getter
 	runOnce       bool
+	dryRun        bool
 }
 
 func (c *controller) Start(ctx context.Context) error {
@@ -281,7 +283,9 @@ func (c *controller) run() {
 			newProwJob := pjutil.NewProwJob(prowJob.Spec, prowJob.ObjectMeta.Labels, prowJob.ObjectMeta.Annotations)
 			newProwJob.ObjectMeta.Labels[kube.CreatedByRestarterLabel] = "true"
 			newProwJob.ObjectMeta.Labels[kube.RestartCountLabel] = strconv.Itoa(prevRestartsCount + 1)
-			newProwJob.Status.Description = "Rerunning job to recover from transient scheduling problem."
+			newProwJob.ObjectMeta.Namespace = prowJob.ObjectMeta.Namespace
+			newProwJob.Status.Description = fmt.Sprintf("Restarting pod: %s", prowJob.Status.Description)
+
 			if err := c.prowJobClient.Create(context.TODO(), &newProwJob); err != nil {
 				c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).WithError(err).Error("Error restarting prowjob.")
 				metrics.prowJobsRestartErrors++
