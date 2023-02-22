@@ -26,6 +26,8 @@ const (
 	// CreatedByTideLabel is added by tide when it triggered a job.
 	// TODO: Namespace this label.
 	CreatedByTideLabel = "created-by-tide"
+	// CreatedByTideLabel is added by restarter when it triggered a job.
+	CreatedByRestarterLabel = "created-by-restarter"
 	// ProwJobTypeLabel is added in resources created by prow and
 	// carries the job type (presubmit, postsubmit, periodic, batch)
 	// that the pod is running.
@@ -66,6 +68,8 @@ const (
 	PullLabel = "prow.k8s.io/refs.pull"
 	// RetestLabel exposes if the job was created by a re-test request.
 	RetestLabel = "prow.k8s.io/retest"
+	// RestartCountLabel keeps the number of restarts so far
+	RestartCountLabel = "prow.k8s.io/restarts"
 	// IsOptionalLabel is added in resources created by prow and
 	// carries the Optional from a Presubmit job.
 	IsOptionalLabel = "prow.k8s.io/is-optional"

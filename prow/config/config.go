@@ -42,7 +42,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/sirupsen/logrus"
 	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	"gopkg.in/robfig/cron.v2"
+	cron "gopkg.in/robfig/cron.v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -144,6 +144,7 @@ type ProwConfig struct {
 	Tide                 Tide                 `json:"tide,omitempty"`
 	Plank                Plank                `json:"plank,omitempty"`
 	Sinker               Sinker               `json:"sinker,omitempty"`
+	Restarter            Restarter            `json:"restarter,omitempty"`
 	Deck                 Deck                 `json:"deck,omitempty"`
 	BranchProtection     BranchProtection     `json:"branch-protection"`
 	Gerrit               Gerrit               `json:"gerrit"`
@@ -1060,6 +1061,16 @@ type Sinker struct {
 	TerminatedPodTTL *metav1.Duration `json:"terminated_pod_ttl,omitempty"`
 	// ExcludeClusters are build clusters that don't want to be managed by sinker.
 	ExcludeClusters []string `json:"exclude_clusters,omitempty"`
+}
+
+// Sinker is config for the restarter controller.
+type Restarter struct {
+	// ResyncPeriod is how often the controller will perform a garbage
+	// collection. Defaults to 5 minutes.
+	ResyncPeriod *metav1.Duration `json:"resync_period,omitempty"`
+	// MaxRestarts is how many times a job can be restarted automatically by the restarter
+	// before it gives up
+	MaxRestarts int `json:"max_restarts,omitempty"`
 }
 
 // LensConfig names a specific lens, and optionally provides some configuration for it.
@@ -2627,6 +2638,14 @@ func parseProwConfig(c *Config) error {
 
 	if c.Sinker.TerminatedPodTTL == nil {
 		c.Sinker.TerminatedPodTTL = &metav1.Duration{Duration: c.Sinker.MaxPodAge.Duration}
+	}
+
+	if c.Restarter.ResyncPeriod == nil {
+		c.Restarter.ResyncPeriod = &metav1.Duration{Duration: 10 * time.Minute}
+	}
+
+	if c.Restarter.MaxRestarts == 0 {
+		c.Restarter.MaxRestarts = 5
 	}
 
 	if c.Tide.SyncPeriod == nil {

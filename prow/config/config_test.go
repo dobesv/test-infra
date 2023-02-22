@@ -8271,6 +8271,9 @@ prowjob_namespace: default
 push_gateway:
   interval: 1m0s
   serve_metrics: false
+restarter:
+  max_restarts: 5
+  resync_period: 10m0s
 sinker:
   max_pod_age: 24h0m0s
   max_prowjob_age: 168h0m0s
@@ -8354,6 +8357,9 @@ prowjob_namespace: default
 push_gateway:
   interval: 1m0s
   serve_metrics: false
+restarter:
+  max_restarts: 5
+  resync_period: 10m0s
 sinker:
   max_pod_age: 24h0m0s
   max_prowjob_age: 168h0m0s
@@ -8430,6 +8436,9 @@ prowjob_namespace: default
 push_gateway:
   interval: 1m0s
   serve_metrics: false
+restarter:
+  max_restarts: 5
+  resync_period: 10m0s
 sinker:
   max_pod_age: 24h0m0s
   max_prowjob_age: 168h0m0s
@@ -8511,6 +8520,9 @@ prowjob_namespace: default
 push_gateway:
   interval: 1m0s
   serve_metrics: false
+restarter:
+  max_restarts: 5
+  resync_period: 10m0s
 sinker:
   max_pod_age: 24h0m0s
   max_prowjob_age: 168h0m0s
