@@ -19,6 +19,7 @@ images:
   - dir: prow/cmd/mkpj
   - dir: prow/cmd/mkpod
   - dir: prow/cmd/peribolos
+  - dir: prow/cmd/restarter
   - dir: prow/cmd/sinker
   - dir: prow/cmd/status-reconciler
   - dir: prow/cmd/sub
