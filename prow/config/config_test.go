@@ -8164,7 +8164,7 @@ push_gateway:
   serve_metrics: false
 restarter:
   max_restarts: 5
-  resync_period: 10m0s
+  resync_period: 5m0s
 sinker:
   max_pod_age: 24h0m0s
   max_prowjob_age: 168h0m0s
@@ -8248,7 +8248,7 @@ push_gateway:
   serve_metrics: false
 restarter:
   max_restarts: 5
-  resync_period: 10m0s
+  resync_period: 5m0s
 sinker:
   max_pod_age: 24h0m0s
   max_prowjob_age: 168h0m0s
@@ -8325,7 +8325,7 @@ push_gateway:
   serve_metrics: false
 restarter:
   max_restarts: 5
-  resync_period: 10m0s
+  resync_period: 5m0s
 sinker:
   max_pod_age: 24h0m0s
   max_prowjob_age: 168h0m0s
@@ -8407,7 +8407,7 @@ push_gateway:
   serve_metrics: false
 restarter:
   max_restarts: 5
-  resync_period: 10m0s
+  resync_period: 5m0s
 sinker:
   max_pod_age: 24h0m0s
   max_prowjob_age: 168h0m0s
