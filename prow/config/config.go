@@ -1065,8 +1065,7 @@ type Sinker struct {
 
 // Sinker is config for the restarter controller.
 type Restarter struct {
-	// ResyncPeriod is how often the controller will perform a garbage
-	// collection. Defaults to 5 minutes.
+	// ResyncPeriod is how often the controller will run. Defaults to 5 minutes.
 	ResyncPeriod *metav1.Duration `json:"resync_period,omitempty"`
 	// MaxRestarts is how many times a job can be restarted automatically by the restarter
 	// before it gives up
@@ -2641,7 +2640,7 @@ func parseProwConfig(c *Config) error {
 	}
 
 	if c.Restarter.ResyncPeriod == nil {
-		c.Restarter.ResyncPeriod = &metav1.Duration{Duration: 10 * time.Minute}
+		c.Restarter.ResyncPeriod = &metav1.Duration{Duration: 5 * time.Minute}
 	}
 
 	if c.Restarter.MaxRestarts == 0 {
