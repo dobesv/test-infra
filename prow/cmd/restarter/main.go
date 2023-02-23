@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"k8s.io/test-infra/prow/kube"
 	"k8s.io/test-infra/prow/pjutil"
 	"os"
@@ -126,34 +125,10 @@ func main() {
 		logrus.WithError(err).Fatal("Error creating manager")
 	}
 
-	buildManagers, err := o.kubernetes.BuildClusterManagers(o.dryRun,
-		// The watch apimachinery doesn't support restarts, so just exit the
-		// binary if a build cluster can be connected later .
-		func() {
-			logrus.Info("Build cluster that failed to connect initially now worked, exiting to trigger a restart.")
-			interrupts.Terminate()
-		},
-		func(o *manager.Options) {
-			o.Namespace = cfg().PodNamespace
-		},
-	)
-	if err != nil {
-		logrus.WithError(err).Error("Failed to construct build cluster managers. Is there a bad entry in the kubeconfig secret?")
-	}
-
-	buildClusterClients := map[string]ctrlruntimeclient.Client{}
-	for clusterName, buildManager := range buildManagers {
-		if err := mgr.Add(buildManager); err != nil {
-			logrus.WithError(err).Fatal("Failed to add build cluster manager to main manager")
-		}
-		buildClusterClients[clusterName] = buildManager.GetClient()
-	}
-
 	c := controller{
 		ctx:           context.Background(),
 		logger:        logrus.NewEntry(logrus.StandardLogger()),
 		prowJobClient: mgr.GetClient(),
-		podClients:    buildClusterClients,
 		config:        cfg,
 		runOnce:       o.runOnce,
 		dryRun:        o.dryRun,
@@ -171,7 +146,6 @@ type controller struct {
 	ctx           context.Context
 	logger        *logrus.Entry
 	prowJobClient ctrlruntimeclient.Client
-	podClients    map[string]ctrlruntimeclient.Client
 	config        config.Getter
 	runOnce       bool
 	dryRun        bool
@@ -271,28 +245,83 @@ func (c *controller) run() {
 		if prevRestartsSet && prevRestartsStr != "" {
 			parsedRestartsCount, err := strconv.Atoi(prevRestartsStr)
 			if err != nil {
-				c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).WithError(err).Error("Error parsing prowjob restart count.")
+				c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).WithError(err).Error("Error parsing job restart count, skipping")
 				continue
 			}
 			prevRestartsCount = parsedRestartsCount
 		}
 		if prevRestartsCount >= maxRestarts {
+			c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).Info("job has reached maximum number of restarts, skipping")
 			continue
 		}
-		if (prowJob.Status.State == prowv1.FailureState && prowJob.Status.Description == "Pod got deleted unexpectedly") ||
-			(prowJob.Status.State == prowv1.ErrorState && prowJob.Status.Description == "Pod scheduling timeout.") {
-			newProwJob := pjutil.NewProwJob(prowJob.Spec, prowJob.ObjectMeta.Labels, prowJob.ObjectMeta.Annotations)
-			newProwJob.ObjectMeta.Labels[kube.CreatedByRestarterLabel] = "true"
-			newProwJob.ObjectMeta.Labels[kube.RestartCountLabel] = strconv.Itoa(prevRestartsCount + 1)
-			newProwJob.ObjectMeta.Namespace = prowJob.ObjectMeta.Namespace
-			newProwJob.Status.Description = fmt.Sprintf("Restarting pod: %s", prowJob.Status.Description)
 
-			if err := c.prowJobClient.Create(context.TODO(), &newProwJob); err != nil {
-				c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).WithError(err).Error("Error restarting prowjob.")
-				metrics.prowJobsRestartErrors++
-			} else {
-				metrics.prowJobsRestarted++
+		c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).WithField("statusDescription", prowJob.Status.Description).WithField("prevRestarts", prevRestartsStr).Debug("Checking prowjob.")
+
+		wantToRestart := (prowJob.Status.State == prowv1.FailureState && prowJob.Status.Description == "Pod got deleted unexpectedly") ||
+			(prowJob.Status.State == prowv1.ErrorState && prowJob.Status.Description == "Pod scheduling timeout.")
+
+		if !wantToRestart {
+			c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).Info("job status does not indicate a restart")
+			continue
+		}
+
+		originalJobName := prowJob.ObjectMeta.Name
+		if label, isSet := prowJob.ObjectMeta.Labels[kube.OriginalJobName]; isSet {
+			originalJobName = label
+		}
+
+		// See if there's another job that would already be considered a re-run of this job
+		newerJobExists := false
+		for _, otherProwJob := range prowJobs.Items {
+			if otherProwJob.CreationTimestamp.Time.After(prowJob.CreationTimestamp.Time) {
+				// Check if the other job has the same original job
+				if value, isSet := otherProwJob.ObjectMeta.Labels[kube.OriginalJobName]; isSet && originalJobName == value {
+					newerJobExists = true
+					break
+				}
+
+				// Check if labels that describe what is built by the job are matching
+				allEqual := true
+				for _, k := range []string{
+					kube.ContextAnnotation,
+					kube.ProwJobTypeLabel,
+					kube.ProwBuildIDLabel,
+					kube.ProwJobAnnotation,
+					kube.OrgLabel,
+					kube.RepoLabel,
+					kube.BaseRefLabel,
+					kube.PullLabel,
+				} {
+					if prowJob.ObjectMeta.Labels[k] != otherProwJob.ObjectMeta.Labels[k] {
+						allEqual = false
+						break
+					}
+				}
+				if allEqual {
+					newerJobExists = true
+					break
+				}
 			}
+		}
+		if newerJobExists {
+			c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).Info("Not restarting job as there is already a newer similar job")
+			continue
+		}
+
+		// Looks like we need to restart this job
+		newProwJob := pjutil.NewProwJob(prowJob.Spec, prowJob.ObjectMeta.Labels, prowJob.ObjectMeta.Annotations)
+		newProwJob.ObjectMeta.Labels[kube.CreatedByRestarterLabel] = "true"
+		newProwJob.ObjectMeta.Labels[kube.RestartCountLabel] = strconv.Itoa(prevRestartsCount + 1)
+
+		newProwJob.ObjectMeta.Labels[kube.OriginalJobName] = originalJobName
+
+		newProwJob.ObjectMeta.Namespace = prowJob.ObjectMeta.Namespace
+		if err := c.prowJobClient.Create(context.TODO(), &newProwJob); err != nil {
+			c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).WithError(err).Error("Error restarting prowjob.")
+			metrics.prowJobsRestartErrors++
+		} else {
+			c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).Info("Created new prowjob to retry failed job.")
+			metrics.prowJobsRestarted++
 		}
 	}
 
