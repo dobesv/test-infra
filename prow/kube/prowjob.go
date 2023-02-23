@@ -70,6 +70,8 @@ const (
 	RetestLabel = "prow.k8s.io/retest"
 	// RestartCountLabel keeps the number of restarts so far
 	RestartCountLabel = "prow.k8s.io/restarts"
+	// OriginalJobName keeps the number of restarts so far
+	OriginalJobName = "prow.k8s.io/original-job-name"
 	// IsOptionalLabel is added in resources created by prow and
 	// carries the Optional from a Presubmit job.
 	IsOptionalLabel = "prow.k8s.io/is-optional"
