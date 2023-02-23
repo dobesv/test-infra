@@ -320,7 +320,7 @@ func (c *controller) run() {
 			c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).WithError(err).Error("Error restarting prowjob.")
 			metrics.prowJobsRestartErrors++
 		} else {
-			c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).Info("Created new prowjob to retry failed job.")
+			c.logger.WithFields(pjutil.ProwJobFields(&newProwJob)).WithField("originalJobName", originalJobName).Info("Created new prowjob to retry failed job.")
 			metrics.prowJobsRestarted++
 		}
 	}
