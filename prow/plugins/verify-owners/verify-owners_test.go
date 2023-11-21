@@ -211,15 +211,23 @@ func (froc fakeRepoownersClient) LoadRepoOwners(org, repo, base string) (repoown
 type fakeOwnersClient struct {
 	owners            map[string]string
 	approvers         map[string]layeredsets.String
-	leafApprovers     map[string]sets.String
+	leafApprovers     map[string]sets.Set[string]
 	reviewers         map[string]layeredsets.String
-	requiredReviewers map[string]sets.String
-	leafReviewers     map[string]sets.String
+	requiredReviewers map[string]sets.Set[string]
+	leafReviewers     map[string]sets.Set[string]
 	dirIgnorelist     []*regexp.Regexp
 }
 
-func (foc *fakeOwnersClient) AllOwners() sets.String {
-	return sets.String{}
+func (foc *fakeOwnersClient) AllApprovers() sets.Set[string] {
+	return sets.Set[string]{}
+}
+
+func (foc *fakeOwnersClient) AllOwners() sets.Set[string] {
+	return sets.Set[string]{}
+}
+
+func (foc *fakeOwnersClient) AllReviewers() sets.Set[string] {
+	return sets.Set[string]{}
 }
 
 func (foc *fakeOwnersClient) Filenames() ownersconfig.Filenames {
@@ -230,7 +238,7 @@ func (foc *fakeOwnersClient) Approvers(path string) layeredsets.String {
 	return foc.approvers[path]
 }
 
-func (foc *fakeOwnersClient) LeafApprovers(path string) sets.String {
+func (foc *fakeOwnersClient) LeafApprovers(path string) sets.Set[string] {
 	return foc.leafApprovers[path]
 }
 
@@ -242,11 +250,11 @@ func (foc *fakeOwnersClient) Reviewers(path string) layeredsets.String {
 	return foc.reviewers[path]
 }
 
-func (foc *fakeOwnersClient) RequiredReviewers(path string) sets.String {
+func (foc *fakeOwnersClient) RequiredReviewers(path string) sets.Set[string] {
 	return foc.requiredReviewers[path]
 }
 
-func (foc *fakeOwnersClient) LeafReviewers(path string) sets.String {
+func (foc *fakeOwnersClient) LeafReviewers(path string) sets.Set[string] {
 	return foc.leafReviewers[path]
 }
 
@@ -254,8 +262,8 @@ func (foc *fakeOwnersClient) FindReviewersOwnersForFile(path string) string {
 	return foc.owners[path]
 }
 
-func (foc *fakeOwnersClient) FindLabelsForFile(path string) sets.String {
-	return sets.String{}
+func (foc *fakeOwnersClient) FindLabelsForFile(path string) sets.Set[string] {
+	return sets.Set[string]{}
 }
 
 func (foc *fakeOwnersClient) IsNoParentOwners(path string) bool {
@@ -300,8 +308,8 @@ func (foc *fakeOwnersClient) ParseFullConfig(path string) (repoowners.FullConfig
 	return *full, err
 }
 
-func (foc *fakeOwnersClient) TopLevelApprovers() sets.String {
-	return sets.String{}
+func (foc *fakeOwnersClient) TopLevelApprovers() sets.Set[string] {
+	return sets.Set[string]{}
 }
 
 func makeFakeRepoOwnersClient() fakeRepoownersClient {
@@ -322,10 +330,6 @@ func addFilesToRepo(lg *localgit.LocalGit, paths []string, ownersFile string) er
 		}
 	}
 	return lg.AddCommit("org", "repo", origFiles)
-}
-
-func TestHandle(t *testing.T) {
-	testHandle(localgit.New, t)
 }
 
 func TestHandleV2(t *testing.T) {
@@ -540,10 +544,6 @@ func testHandle(clients localgit.Clients, t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestParseOwnersFile(t *testing.T) {
-	testParseOwnersFile(localgit.New, t)
 }
 
 func TestParseOwnersFileV2(t *testing.T) {
@@ -868,10 +868,6 @@ var ownersAliasesPatch = map[string]string{
 `,
 }
 
-func TestNonCollaborators(t *testing.T) {
-	testNonCollaborators(localgit.New, t)
-}
-
 func TestNonCollaboratorsV2(t *testing.T) {
 	testNonCollaborators(localgit.NewV2, t)
 }
@@ -1139,10 +1135,6 @@ func testNonCollaborators(clients localgit.Clients, t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestHandleGenericComment(t *testing.T) {
-	testHandleGenericComment(localgit.New, t)
 }
 
 func TestHandleGenericCommentV2(t *testing.T) {
@@ -1438,10 +1430,6 @@ func testOwnersRemoval(clients localgit.Clients, t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestOwnersRemoval(t *testing.T) {
-	testOwnersRemoval(localgit.New, t)
 }
 
 func TestOwnersRemovalV2(t *testing.T) {

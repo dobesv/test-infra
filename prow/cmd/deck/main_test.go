@@ -88,6 +88,9 @@ func TestOptions_Validate(t *testing.T) {
 			name: "minimal set ok",
 			input: options{
 				config: configflagutil.ConfigOptions{ConfigPath: "test"},
+				controllerManager: flagutil.ControllerManagerOptions{
+					TimeoutListingProwJobsDefault: 30 * time.Second,
+				},
 			},
 			expectedErr: false,
 		},
@@ -99,7 +102,10 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "ok with oauth",
 			input: options{
-				config:                configflagutil.ConfigOptions{ConfigPath: "test"},
+				config: configflagutil.ConfigOptions{ConfigPath: "test"},
+				controllerManager: flagutil.ControllerManagerOptions{
+					TimeoutListingProwJobsDefault: 30 * time.Second,
+				},
 				oauthURL:              "website",
 				githubOAuthConfigFile: "something",
 				cookieSecretFile:      "yum",
@@ -109,7 +115,10 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "missing github config with oauth",
 			input: options{
-				config:           configflagutil.ConfigOptions{ConfigPath: "test"},
+				config: configflagutil.ConfigOptions{ConfigPath: "test"},
+				controllerManager: flagutil.ControllerManagerOptions{
+					TimeoutListingProwJobsDefault: 30 * time.Second,
+				},
 				oauthURL:         "website",
 				cookieSecretFile: "yum",
 			},
@@ -118,7 +127,10 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "missing cookie with oauth",
 			input: options{
-				config:                configflagutil.ConfigOptions{ConfigPath: "test"},
+				config: configflagutil.ConfigOptions{ConfigPath: "test"},
+				controllerManager: flagutil.ControllerManagerOptions{
+					TimeoutListingProwJobsDefault: 30 * time.Second,
+				},
 				oauthURL:              "website",
 				githubOAuthConfigFile: "something",
 			},
@@ -127,7 +139,10 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "hidden only and show hidden are mutually exclusive",
 			input: options{
-				config:     configflagutil.ConfigOptions{ConfigPath: "test"},
+				config: configflagutil.ConfigOptions{ConfigPath: "test"},
+				controllerManager: flagutil.ControllerManagerOptions{
+					TimeoutListingProwJobsDefault: 30 * time.Second,
+				},
 				hiddenOnly: true,
 				showHidden: true,
 			},
@@ -136,7 +151,10 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "show hidden and tenantIds are mutually exclusive",
 			input: options{
-				config:     configflagutil.ConfigOptions{ConfigPath: "test"},
+				config: configflagutil.ConfigOptions{ConfigPath: "test"},
+				controllerManager: flagutil.ControllerManagerOptions{
+					TimeoutListingProwJobsDefault: 30 * time.Second,
+				},
 				hiddenOnly: false,
 				showHidden: true,
 				tenantIDs:  setTenantIDs,
@@ -146,7 +164,10 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "hiddenOnly and tenantIds are mutually exclusive",
 			input: options{
-				config:     configflagutil.ConfigOptions{ConfigPath: "test"},
+				config: configflagutil.ConfigOptions{ConfigPath: "test"},
+				controllerManager: flagutil.ControllerManagerOptions{
+					TimeoutListingProwJobsDefault: 30 * time.Second,
+				},
 				hiddenOnly: true,
 				showHidden: false,
 				tenantIDs:  setTenantIDs,
@@ -599,7 +620,7 @@ func Test_gatherOptions(t *testing.T) {
 	cases := []struct {
 		name       string
 		args       map[string]string
-		del        sets.String
+		del        sets.Set[string]
 		koDataPath string
 		expected   func(*options)
 		err        bool
@@ -607,13 +628,15 @@ func Test_gatherOptions(t *testing.T) {
 		{
 			name: "minimal flags work",
 			expected: func(o *options) {
-				o.timeoutListingProwJobs = 30
+				o.controllerManager.TimeoutListingProwJobs = 30 * time.Second
+				o.controllerManager.TimeoutListingProwJobsDefault = 30 * time.Second
 			},
 		},
 		{
 			name: "default static files location",
 			expected: func(o *options) {
-				o.timeoutListingProwJobs = 30
+				o.controllerManager.TimeoutListingProwJobs = 30 * time.Second
+				o.controllerManager.TimeoutListingProwJobsDefault = 30 * time.Second
 				o.spyglassFilesLocation = "/lenses"
 				o.staticFilesLocation = "/static"
 				o.templateFilesLocation = "/template"
@@ -623,7 +646,8 @@ func Test_gatherOptions(t *testing.T) {
 			name:       "ko data path",
 			koDataPath: "ko-data",
 			expected: func(o *options) {
-				o.timeoutListingProwJobs = 30
+				o.controllerManager.TimeoutListingProwJobs = 30 * time.Second
+				o.controllerManager.TimeoutListingProwJobsDefault = 30 * time.Second
 				o.spyglassFilesLocation = "ko-data/lenses"
 				o.staticFilesLocation = "ko-data/static"
 				o.templateFilesLocation = "ko-data/template"
@@ -636,7 +660,8 @@ func Test_gatherOptions(t *testing.T) {
 			},
 			expected: func(o *options) {
 				o.config.ConfigPath = "/random/value"
-				o.timeoutListingProwJobs = 30
+				o.controllerManager.TimeoutListingProwJobs = 30 * time.Second
+				o.controllerManager.TimeoutListingProwJobsDefault = 30 * time.Second
 			},
 		},
 		{
@@ -675,8 +700,7 @@ func Test_gatherOptions(t *testing.T) {
 					JobConfigPathFlagName:                 "job-config-path",
 					ConfigPath:                            "yo",
 					SupplementalProwConfigsFileNameSuffix: "_prowconfig.yaml",
-					InRepoConfigCacheSize:                 100,
-					InRepoConfigCacheCopies:               1,
+					InRepoConfigCacheSize:                 200,
 				},
 				pluginsConfig: pluginsflagutil.PluginOptions{
 					SupplementalPluginsConfigsFileNameSuffix: "_pluginconfig.yaml",
@@ -767,35 +791,92 @@ func TestHandleConfig(t *testing.T) {
 			},
 		},
 	}
-	configGetter := func() *config.Config {
-		return &c
+	cWithDisabledCluster := config.Config{
+		ProwConfig: config.ProwConfig{
+			DisabledClusters: []string{"build08", "build08", "build01"},
+		},
 	}
-	handler := handleConfig(configGetter, logrus.WithField("handler", "/config"))
-	req, err := http.NewRequest(http.MethodGet, "/config", nil)
+	dataC, err := yaml.Marshal(c)
 	if err != nil {
-		t.Fatalf("Error making request: %v", err)
-	}
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("Bad error code: %d", rr.Code)
-	}
-	if h := rr.Header().Get("Content-Type"); h != "text/plain" {
-		t.Fatalf("Bad Content-Type, expected: 'text/plain', got: %v", h)
-	}
-	resp := rr.Result()
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("Error reading response body: %v", err)
-	}
-	var res config.Config
-	if err := yaml.Unmarshal(body, &res); err != nil {
 		t.Fatalf("Error unmarshaling: %v", err)
 	}
-	if !reflect.DeepEqual(c, res) {
-		t.Errorf("Invalid config. Got %v, expected %v", res, c)
+
+	testcases := []struct {
+		name                string
+		config              config.Config
+		url                 string
+		expectedBody        []byte
+		expectedStatus      int
+		expectedContentType string
+	}{
+		{
+			name:                "general case",
+			config:              c,
+			url:                 "/config",
+			expectedBody:        dataC,
+			expectedStatus:      http.StatusOK,
+			expectedContentType: "text/plain",
+		},
+		{
+			name:                "unsupported key",
+			config:              c,
+			url:                 "/config?key=some",
+			expectedBody:        []byte("getting config for key some is not supported\n"),
+			expectedStatus:      http.StatusInternalServerError,
+			expectedContentType: `text/plain; charset=utf-8`,
+		},
+		{
+			name:   "no disabled clusters",
+			config: c,
+			url:    "/config?key=disabled-clusters",
+			expectedBody: []byte(`[]
+`),
+			expectedStatus:      http.StatusOK,
+			expectedContentType: `text/plain`,
+		},
+		{
+			name:   "disabled clusters",
+			config: cWithDisabledCluster,
+			url:    "/config?key=disabled-clusters",
+			expectedBody: []byte(`- build01
+- build08
+`),
+			expectedStatus:      http.StatusOK,
+			expectedContentType: `text/plain`,
+		},
 	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			configGetter := func() *config.Config {
+				return &tc.config
+			}
+			handler := handleConfig(configGetter, logrus.WithField("handler", "/config"))
+			req, err := http.NewRequest(http.MethodGet, tc.url, nil)
+			if err != nil {
+				t.Fatalf("Error making request: %v", err)
+			}
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != tc.expectedStatus {
+				t.Fatalf("Bad error code: %d", rr.Code)
+			}
+			if h := rr.Header().Get("Content-Type"); h != tc.expectedContentType {
+				t.Fatalf("Bad Content-Type, expected: 'text/plain', got: %v", h)
+			}
+			resp := rr.Result()
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("Error reading response body: %v", err)
+			}
+			if diff := cmp.Diff(string(tc.expectedBody), string(body)); diff != "" {
+				t.Errorf("Error differs from expected:\n%s", diff)
+			}
+		})
+	}
+
 }
 
 func TestHandlePluginConfig(t *testing.T) {

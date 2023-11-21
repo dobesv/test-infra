@@ -57,10 +57,18 @@ ensure-protoc-deps(){
   # Install protoc
   if [[ ! -f "_bin/protoc/bin/protoc" ]]; then
     mkdir -p _bin/protoc
+    OS="linux"
+    if [[ $(uname -s) == "Darwin" ]]; then
+          OS="osx"
+    fi
+    ARCH="x86_64"
+    if [[ $(uname -m) == "arm64" ]]; then
+      ARCH="aarch_64"
+    fi
     # See https://developers.google.com/protocol-buffers/docs/news/2022-05-06 for
     # a note on the versioning scheme change.
     PROTOC_VERSION=21.9
-    PROTOC_ZIP="protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+    PROTOC_ZIP="protoc-${PROTOC_VERSION}-${OS}-${ARCH}.zip"
     curl -OL "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${PROTOC_ZIP}"
     unzip -o $PROTOC_ZIP -d _bin/protoc bin/protoc
     unzip -o $PROTOC_ZIP -d _bin/protoc 'include/*'
@@ -181,7 +189,6 @@ gen-client() {
     --go-header-file hack/boilerplate/boilerplate.generated.go.txt \
     --clientset-name versioned \
     --input-base "" \
-    --input github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1 \
     --input github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1 \
     --output-package k8s.io/test-infra/prow/pipeline/clientset
   copyfiles "./prow/pipeline/clientset" "*.go"
@@ -200,7 +207,6 @@ gen-lister() {
   echo "Generating lister for pipeline..." >&2
   "$listergen" \
     --go-header-file hack/boilerplate/boilerplate.generated.go.txt \
-    --input-dirs github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1 \
     --input-dirs github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1 \
     --output-package k8s.io/test-infra/prow/pipeline/listers
   copyfiles "./prow/pipeline/listers" "*.go"
@@ -221,7 +227,6 @@ gen-informer() {
   echo "Generating informer for pipeline..." >&2
   "$informergen" \
     --go-header-file hack/boilerplate/boilerplate.generated.go.txt \
-    --input-dirs github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1 \
     --input-dirs github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1 \
     --versioned-clientset-package k8s.io/test-infra/prow/pipeline/clientset/versioned \
     --listers-package k8s.io/test-infra/prow/pipeline/listers \

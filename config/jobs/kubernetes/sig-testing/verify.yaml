@@ -17,7 +17,7 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         imagePullPolicy: Always
         command:
         - runner.sh
@@ -44,6 +44,81 @@ presubmits:
           requests:
             cpu: 7
             memory: 12Gi
+  - name: pull-kubernetes-verify-lint
+    cluster: eks-prow-build-cluster
+    decorate: true
+    # This job is running all required linter checks:
+    # - baseline for all code
+    # - stricter configuration for new or modified code in a pull request
+    #
+    # Both run in the same job to reuse the build and (to some extend)
+    # golangci-lint cache. Testing the baseline is necessary because,
+    # for example, a linter config change or tool update might cause
+    # failures in existing, unmodified code.
+    always_run: true
+    optional: true
+    skip_branches:
+    - release-\d+.\d+ # per-release job
+    annotations:
+      fork-per-release: "true"
+      testgrid-dashboards: sig-testing-misc
+      description: Runs golangci-lint with a stricter configuration for new code.
+      testgrid-alert-email: patrick.ohly@intel.com
+      testgrid-num-failures-to-alert: "15"
+    path_alias: k8s.io/kubernetes
+    spec:
+      containers:
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
+        command:
+        - make
+        args:
+        - verify
+        - WHAT=golangci-lint golangci-lint-pr
+        resources:
+          # It peaks at around 7 cores of the EKS cluster. We can fit more jobs onto
+          # a node without much slowdown by requesting one third of a node
+          # (= 3 * 5 + 1 for kubelet).
+          limits:
+            cpu: 5
+            memory: 12Gi
+          requests:
+            cpu: 5
+            memory: 12Gi
+  - name: pull-kubernetes-linter-hints
+    cluster: eks-prow-build-cluster
+    decorate: true
+    always_run: true
+    # This job will always remain optional because linting may fail because of issues that do not
+    # need to be addressed. The job has to fail nonetheless to make it visible in GitHub that there
+    # were such issues.
+    optional: true
+    skip_branches:
+    - release-\d+.\d+ # per-release job
+    annotations:
+      fork-per-release: "true"
+      testgrid-dashboards: sig-testing-misc
+      description: Runs golangci-lint with a configuration for new code that reports also issues which do not need to be fixed.
+      testgrid-alert-email: patrick.ohly@intel.com
+      testgrid-num-failures-to-alert: "15"
+    path_alias: k8s.io/kubernetes
+    spec:
+      containers:
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
+        command:
+        - make
+        args:
+        - verify
+        - WHAT=golangci-lint-pr-hints
+        resources:
+          # It peaks at around 7 cores of the EKS cluster. We can fit more jobs onto
+          # a node without much slowdown by requesting one third of a node
+          # (= 3 * 5 + 1 for kubelet).
+          limits:
+            cpu: 5
+            memory: 12Gi
+          requests:
+            cpu: 5
+            memory: 12Gi
   - name: pull-kubernetes-verify-go-canary
     cluster: k8s-infra-prow-build
     always_run: false
@@ -60,7 +135,7 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-go-canary
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-go-canary
         imagePullPolicy: Always
         command:
         - runner.sh
@@ -89,7 +164,7 @@ presubmits:
             memory: 12Gi
 periodics:
 - interval: 1h
-  cluster: k8s-infra-prow-build
+  cluster: eks-prow-build-cluster
   name: ci-kubernetes-verify-master
   labels:
     preset-service-account: "true"
@@ -109,7 +184,7 @@ periodics:
     path_alias: k8s.io/kubernetes
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       imagePullPolicy: Always
       command:
       - runner.sh
@@ -138,9 +213,10 @@ periodics:
           memory: 24Gi
 - interval: 6h
   name: kubernetes-verify-go-licenses-periodical
+  cluster: eks-prow-build-cluster
   decorate: true
   decoration_config:
-    timeout: 5m
+    timeout: 10m
   labels:
     preset-service-account: "true"
     preset-dind-enabled: "true"
@@ -156,7 +232,7 @@ periodics:
     path_alias: k8s.io/kubernetes
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       imagePullPolicy: Always
       command:
       - runner.sh
@@ -167,6 +243,13 @@ periodics:
         value: master
       - name: REPO_DIR
         value: /workspace/k8s.io/kubernetes
+      resources:
+        limits:
+          cpu: 4
+          memory: 4Gi
+        requests:
+          cpu: 4
+          memory: 4Gi
       # docker-in-docker needs privileged mode
       securityContext:
         privileged: true

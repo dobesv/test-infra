@@ -553,11 +553,15 @@ function createPRCardTitle(pr: PullRequest, tidePools: TidePool[], jobStatus: Va
   prTitleText.classList.add("pr-title-text");
   prTitle.appendChild(prTitleText);
 
-  const pool = tidePools.filter((p) => {
-    const repo = `${p.Org}/${p.Repo}`;
-    return pr.Repository.NameWithOwner === repo && pr.BaseRef.Name === p.Branch;
-  });
-  let tidePoolLabel = createTidePoolLabel(pr, pool[0]);
+  let tidePoolLabel;
+  if (tidePools && tidePools.length) {
+    const pool = tidePools.filter((p) => {
+      const repo = `${p.Org}/${p.Repo}`;
+      return pr.Repository.NameWithOwner === repo && pr.BaseRef.Name === p.Branch;
+    });
+    tidePoolLabel = createTidePoolLabel(pr, pool[0]);
+  }
+
   if (!tidePoolLabel) {
     tidePoolLabel = createTitleLabel(pr.Merged, jobStatus, noQuery, labelConflict, mergeConflict, branchConflict, authorConflict, milestoneConflict);
   }
@@ -863,10 +867,10 @@ function createQueriesTable(prLabels: { Label: Label }[], query: ProcessedQuery)
   const col3 = document.createElement("td");
 
   const body = document.createElement("tbody");
-    const row = document.createElement("tr");
-    row.appendChild(createMergeLabelCell(query.labels, true));
-    row.appendChild(createMergeLabelCell(query.missingLabels));
-    body.appendChild(row);
+  const row = document.createElement("tr");
+  row.appendChild(createMergeLabelCell(query.labels, true));
+  row.appendChild(createMergeLabelCell(query.missingLabels));
+  body.appendChild(row);
 
   tableRow.appendChild(col1);
   tableRow.appendChild(col2);
@@ -1015,13 +1019,13 @@ function createPRCardBody(pr: PullRequest, builds: UnifiedContext[], mergeable: 
 }
 
 function createPRCardBodyQueryInfo(pr: PullRequest, builds: UnifiedContext[], query: ProcessedQuery, branchConflict: boolean,
-                          authorConflict: boolean, milestoneConflict: boolean, multipleQueries: boolean, queryNumber: number): HTMLElement {
+  authorConflict: boolean, milestoneConflict: boolean, multipleQueries: boolean, queryNumber: number): HTMLElement {
   const cardBody = document.createElement("div");
   if (query) {
     const queryTitle = document.createElement("h6")
     let title = "Merge Query";
     if (multipleQueries) {
-      title += " " + queryNumber;
+      title += ` ${  queryNumber}`;
     }
     queryTitle.textContent = title;
     queryTitle.appendChild(createQueryDetailsBtn(query));
@@ -1174,7 +1178,7 @@ function createPRCard(pr: PullRequest, builds: UnifiedContext[] = [], queries: P
 
   const hasMatchingQuery = queries.length > 0;
   const mergeConflict = pr.Mergeable ? pr.Mergeable === "CONFLICTING" : false;
-  let branchConflicts, authorConflicts, milestoneConflicts, labelConflicts = 0;
+  let branchConflicts; let authorConflicts; let milestoneConflicts; let labelConflicts = 0;
   const prCardBody = document.createElement("div");
   prCardBody.classList.add("mdl-card__supporting-text");
   prCardBody.appendChild(createPRCardBody(pr, builds, mergeConflict));

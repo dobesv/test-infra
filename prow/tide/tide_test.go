@@ -41,7 +41,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/apimachinery/pkg/api/equality"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -279,7 +278,7 @@ func TestAccumulateBatch(t *testing.T) {
 
 			inrepoconfig := config.InRepoConfig{}
 			if test.prowYAMLGetter != nil {
-				inrepoconfig.Enabled = map[string]*bool{"*": utilpointer.BoolPtr(true)}
+				inrepoconfig.Enabled = map[string]*bool{"*": utilpointer.Bool(true)}
 			}
 			cfg := func() *config.Config {
 				return &config.Config{
@@ -1006,10 +1005,6 @@ func TestDividePool(t *testing.T) {
 	}
 }
 
-func TestPickBatch(t *testing.T) {
-	testPickBatch(localgit.New, t)
-}
-
 func TestPickBatchV2(t *testing.T) {
 	testPickBatch(localgit.NewV2, t)
 }
@@ -1160,7 +1155,7 @@ func testPickBatch(clients localgit.Clients, t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error from pickBatch: %v", err)
 	}
-	if !equality.Semantic.DeepEqual(presubmits, ca.Config().PresubmitsStatic["o/r"]) {
+	if !apiequality.Semantic.DeepEqual(presubmits, ca.Config().PresubmitsStatic["o/r"]) {
 		t.Errorf("resolving presubmits failed, diff:\n%v\n", diff.ObjectReflectDiff(presubmits, ca.Config().PresubmitsStatic["o/r"]))
 	}
 	for _, testpr := range testprs {
@@ -1190,10 +1185,10 @@ func TestMergeMethodCheckerAndPRMergeMethod(t *testing.T) {
 			MergeLabel:  mergeLabel,
 			RebaseLabel: rebaseLabel,
 
-			MergeType: map[string]types.PullRequestMergeType{
-				"o/configured-rebase":              types.MergeRebase, // GH client allows merge, rebase
-				"o/configured-squash-allow-rebase": types.MergeSquash, // GH client allows merge, squash, rebase
-				"o/configure-re-base":              types.MergeRebase, // GH client allows merge
+			MergeType: map[string]config.TideOrgMergeType{
+				"o/configured-rebase":              {MergeType: types.MergeRebase}, // GH client allows merge, rebase
+				"o/configured-squash-allow-rebase": {MergeType: types.MergeSquash}, // GH client allows merge, squash, rebase
+				"o/configure-re-base":              {MergeType: types.MergeRebase}, // GH client allows merge
 			},
 		},
 	}
@@ -1311,18 +1306,18 @@ func TestMergeMethodCheckerAndPRMergeMethod(t *testing.T) {
 				pr.Mergeable = githubql.MergeableStateConflicting
 			}
 
-			actual, err := mmc.prMergeMethod(tideConfig, CodeReviewCommonFromPullRequest(pr))
-			if err != nil {
+			actual := mmc.prMergeMethod(tideConfig, CodeReviewCommonFromPullRequest(pr))
+			if actual == nil {
 				if !tc.expectErr {
-					t.Errorf("unexpected error: %v", err)
+					t.Errorf("multiple merge methods are not allowed")
 				}
 				return
 			} else if tc.expectErr {
 				t.Errorf("missing expected error")
 				return
 			}
-			if tc.expectedMethod != actual {
-				t.Errorf("wanted: %q, got: %q", tc.expectedMethod, actual)
+			if tc.expectedMethod != *actual {
+				t.Errorf("wanted: %q, got: %q", tc.expectedMethod, *actual)
 			}
 			reason, err := mmc.isAllowedToMerge(CodeReviewCommonFromPullRequest(pr))
 			if err != nil {
@@ -1345,8 +1340,8 @@ func TestRebaseMergeMethodIsAllowed(t *testing.T) {
 	repoName := "fake-repo"
 	tideConfig := config.Tide{
 		TideGitHubConfig: config.TideGitHubConfig{
-			MergeType: map[string]types.PullRequestMergeType{
-				fmt.Sprintf("%s/%s", orgName, repoName): types.MergeRebase,
+			MergeType: map[string]config.TideOrgMergeType{
+				fmt.Sprintf("%s/%s", orgName, repoName): {MergeType: types.MergeRebase},
 			},
 		},
 	}
@@ -1410,10 +1405,6 @@ func TestRebaseMergeMethodIsAllowed(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestTakeAction(t *testing.T) {
-	testTakeAction(localgit.New, t)
 }
 
 func TestTakeActionV2(t *testing.T) {
@@ -3210,7 +3201,7 @@ func TestPresubmitsByPull(t *testing.T) {
 				"foo/bar": {{Reporter: config.Reporter{Context: "wrong-repo"}, AlwaysRun: true}},
 			})
 			if tc.prowYAMLGetter != nil {
-				cfg.InRepoConfig.Enabled = map[string]*bool{"*": utilpointer.BoolPtr(true)}
+				cfg.InRepoConfig.Enabled = map[string]*bool{"*": utilpointer.Bool(true)}
 				cfg.ProwYAMLGetterWithDefaults = tc.prowYAMLGetter
 			}
 			cfgAgent := &config.Agent{}
@@ -3241,7 +3232,7 @@ func TestPresubmitsByPull(t *testing.T) {
 			for _, jobs := range presubmits {
 				config.ClearCompiledRegexes(jobs)
 			}
-			if !equality.Semantic.DeepEqual(presubmits, tc.expectedPresubmits) {
+			if !apiequality.Semantic.DeepEqual(presubmits, tc.expectedPresubmits) {
 				t.Errorf("got incorrect presubmit mapping: %v\n", diff.ObjectReflectDiff(tc.expectedPresubmits, presubmits))
 			}
 			if got := c.changedFiles.changeCache; !reflect.DeepEqual(got, tc.expectedChangeCache) {
@@ -3740,7 +3731,7 @@ func TestPresubmitsForBatch(t *testing.T) {
 
 			inrepoconfig := config.InRepoConfig{}
 			if tc.prowYAMLGetter != nil {
-				inrepoconfig.Enabled = map[string]*bool{"*": utilpointer.BoolPtr(true)}
+				inrepoconfig.Enabled = map[string]*bool{"*": utilpointer.Bool(true)}
 			}
 			cfg := func() *config.Config {
 				return &config.Config{
@@ -3768,7 +3759,7 @@ func TestPresubmitsForBatch(t *testing.T) {
 			}
 			// Clear regexes, otherwise DeepEqual comparison wont work
 			config.ClearCompiledRegexes(presubmits)
-			if !equality.Semantic.DeepEqual(tc.expected, presubmits) {
+			if !apiequality.Semantic.DeepEqual(tc.expected, presubmits) {
 				t.Errorf("returned presubmits do not match expected, diff: %v\n", diff.ObjectReflectDiff(tc.expected, presubmits))
 			}
 		})
@@ -3818,7 +3809,7 @@ func TestChangedFilesAgentBatchChanges(t *testing.T) {
 			if err != nil {
 				t.Fatalf("fauked to get changed files: %v", err)
 			}
-			if !equality.Semantic.DeepEqual(result, tc.expected) {
+			if !apiequality.Semantic.DeepEqual(result, tc.expected) {
 				t.Errorf("returned changes do not match expected; diff: %v\n", diff.ObjectReflectDiff(tc.expected, result))
 			}
 		})
@@ -3840,7 +3831,7 @@ func getPR(org, name string, number int, opts ...func(*PullRequest)) *PullReques
 func TestCacheIndexFuncReturnsDifferentResultsForDifferentInputs(t *testing.T) {
 	type orgRepoBranch struct{ org, repo, branch string }
 
-	results := sets.String{}
+	results := sets.Set[string]{}
 	inputs := []orgRepoBranch{
 		{"org-a", "repo-a", "branch-a"},
 		{"org-a", "repo-a", "branch-b"},
@@ -4017,7 +4008,7 @@ func prowYAMLGetterForHeadRefs(headRefsToLookFor []string, ps []config.Presubmit
 			return nil, fmt.Errorf("expcted %d headrefs, got %d", len(headRefsToLookFor), len(headRefs))
 		}
 		var presubmits []config.Presubmit
-		if sets.NewString(headRefsToLookFor...).Equal(sets.NewString(headRefs...)) {
+		if sets.New[string](headRefsToLookFor...).Equal(sets.New[string](headRefs...)) {
 			presubmits = ps
 		}
 		return &config.ProwYAML{
@@ -4393,7 +4384,7 @@ func TestPickBatchPrefersBatchesWithPreexistingJobs(t *testing.T) {
 	tests := []struct {
 		name                         string
 		subpool                      func(*subpool)
-		prsFailingContextCheck       sets.Int
+		prsFailingContextCheck       sets.Set[int]
 		maxBatchSize                 int
 		prioritizeExistingBatchesMap map[string]bool
 
@@ -4471,7 +4462,7 @@ func TestPickBatchPrefersBatchesWithPreexistingJobs(t *testing.T) {
 		{
 			name:                   "Batch with pre-existing success job exists but one fails context check, new batch is picked",
 			subpool:                func(sp *subpool) {},
-			prsFailingContextCheck: sets.NewInt(1),
+			prsFailingContextCheck: sets.New[int](1),
 			expectedPullRequests: []CodeReviewCommon{
 				*CodeReviewCommonFromPullRequest(&PullRequest{Number: 99, HeadRefOID: "pr-from-new-batch-func"}),
 			},

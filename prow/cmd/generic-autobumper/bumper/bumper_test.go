@@ -41,6 +41,7 @@ func TestValidateOptions(t *testing.T) {
 		gerritCookieFile    *string
 		remoteName          *string
 		skipPullRequest     *bool
+		signoff             *bool
 		err                 bool
 		upstreamBaseChanged bool
 	}{
@@ -111,10 +112,14 @@ func TestValidateOptions(t *testing.T) {
 				Gerrit:          nil,
 				RemoteName:      "whatever-name",
 				SkipPullRequest: false,
+				Signoff:         false,
 			}
 
 			if tc.skipPullRequest != nil {
 				defaultOption.SkipPullRequest = *tc.skipPullRequest
+			}
+			if tc.signoff != nil {
+				defaultOption.Signoff = *tc.signoff
 			}
 			if tc.githubToken != nil {
 				defaultOption.GitHubToken = *tc.githubToken
@@ -227,7 +232,7 @@ func TestCallWithWriter(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 			fakeOut.results = []byte{}
 			fakeErr.results = []byte{}
-			_ = Call(stdout, stderr, tc.command, tc.args...)
+			_ = Call(stdout, stderr, tc.command, tc.args)
 			if full, want := string(fakeOut.results), tc.expectedOut; !strings.Contains(full, want) {
 				t.Errorf("stdout does not contain %q, got %q", full, want)
 			}

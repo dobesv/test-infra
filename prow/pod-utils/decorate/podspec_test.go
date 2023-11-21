@@ -47,6 +47,9 @@ import (
 func pStr(str string) *string {
 	return &str
 }
+func pInt64(i int64) *int64 {
+	return &i
+}
 
 func cookieVolumeOnly(secret string) coreapi.Volume {
 	v, _, _ := cookiefileVolume(secret)
@@ -589,9 +592,11 @@ func TestProwJobToPod(t *testing.T) {
 					BaseRef: "base-ref",
 					BaseSHA: "base-sha",
 					Pulls: []prowapi.Pull{{
-						Number: 1,
-						Author: "author-name",
-						SHA:    "pull-sha",
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "pull-branch-name",
+						Title:   "pull-title",
 					}},
 				},
 				PodSpec: &coreapi.PodSpec{
@@ -643,9 +648,11 @@ func TestProwJobToPod(t *testing.T) {
 					BaseRef: "base-ref",
 					BaseSHA: "base-sha",
 					Pulls: []prowapi.Pull{{
-						Number: 1,
-						Author: "author-name",
-						SHA:    "pull-sha",
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "my-big-change",
+						Title:   "pull-title",
 					}},
 					PathAlias: "somewhere/else",
 				},
@@ -697,9 +704,11 @@ func TestProwJobToPod(t *testing.T) {
 					BaseRef: "base-ref",
 					BaseSHA: "base-sha",
 					Pulls: []prowapi.Pull{{
-						Number: 1,
-						Author: "author-name",
-						SHA:    "pull-sha",
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "fix-typos-99",
+						Title:   "pull-title",
 					}},
 					PathAlias: "somewhere/else",
 				},
@@ -752,9 +761,11 @@ func TestProwJobToPod(t *testing.T) {
 					BaseRef: "base-ref",
 					BaseSHA: "base-sha",
 					Pulls: []prowapi.Pull{{
-						Number: 1,
-						Author: "author-name",
-						SHA:    "pull-sha",
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "fixes-fixes-fixes",
+						Title:   "pull-title",
 					}},
 					PathAlias: "somewhere/else",
 				},
@@ -807,9 +818,11 @@ func TestProwJobToPod(t *testing.T) {
 					BaseRef: "base-ref",
 					BaseSHA: "base-sha",
 					Pulls: []prowapi.Pull{{
-						Number: 1,
-						Author: "author-name",
-						SHA:    "pull-sha",
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "fixes-9",
+						Title:   "pull-title",
 					}},
 					PathAlias: "somewhere/else",
 				},
@@ -903,9 +916,11 @@ func TestProwJobToPod(t *testing.T) {
 					BaseRef: "base-ref",
 					BaseSHA: "base-sha",
 					Pulls: []prowapi.Pull{{
-						Number: 1,
-						Author: "author-name",
-						SHA:    "pull-sha",
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "best-branch-name",
+						Title:   "pull-title",
 					}},
 					PathAlias: "somewhere/else",
 				},
@@ -963,9 +978,11 @@ func TestProwJobToPod(t *testing.T) {
 					BaseRef: "base-ref",
 					BaseSHA: "base-sha",
 					Pulls: []prowapi.Pull{{
-						Number: 1,
-						Author: "author-name",
-						SHA:    "pull-sha",
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "pr-head-ref-11",
+						Title:   "pull-title",
 					}},
 					PathAlias: "somewhere/else",
 				},
@@ -1034,9 +1051,72 @@ func TestProwJobToPod(t *testing.T) {
 					BaseRef: "base-ref",
 					BaseSHA: "base-sha",
 					Pulls: []prowapi.Pull{{
-						Number: 1,
-						Author: "author-name",
-						SHA:    "pull-sha",
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "orig-branch-name",
+						Title:   "pull-title",
+					}},
+					PathAlias: "somewhere/else",
+				},
+				ExtraRefs: []prowapi.Refs{},
+				PodSpec: &coreapi.PodSpec{
+					Containers: []coreapi.Container{
+						{
+							Image:   "tester",
+							Command: []string{"/bin/thing"},
+							Args:    []string{"some", "args"},
+							Env: []coreapi.EnvVar{
+								{Name: "MY_ENV", Value: "rocks"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			podName: "pod",
+			buildID: "blabla",
+			labels:  map[string]string{"needstobe": "inherited"},
+			pjSpec: prowapi.ProwJobSpec{
+				Type:    prowapi.PresubmitJob,
+				Job:     "job-name",
+				Context: "job-context",
+				DecorationConfig: &prowapi.DecorationConfig{
+					Timeout:     &prowapi.Duration{Duration: 120 * time.Minute},
+					GracePeriod: &prowapi.Duration{Duration: 10 * time.Second},
+					UtilityImages: &prowapi.UtilityImages{
+						CloneRefs:  "clonerefs:tag",
+						InitUpload: "initupload:tag",
+						Entrypoint: "entrypoint:tag",
+						Sidecar:    "sidecar:tag",
+					},
+					GCSConfiguration: &prowapi.GCSConfiguration{
+						Bucket:       "my-bucket",
+						PathStrategy: "legacy",
+						DefaultOrg:   "kubernetes",
+						DefaultRepo:  "kubernetes",
+						MediaTypes:   map[string]string{"log": "text/plain"},
+					},
+					// Specify K8s SA rather than cloud storage secret key.
+					DefaultServiceAccountName: pStr("default-SA"),
+					CookiefileSecret:          pStr("yummy/.gitcookies"),
+					RunAsGroup:                pInt64(1000),
+					RunAsUser:                 pInt64(1000),
+					FsGroup:                   pInt64(2000),
+				},
+				Agent: prowapi.KubernetesAgent,
+				Refs: &prowapi.Refs{
+					Org:     "org-name",
+					Repo:    "repo-name",
+					BaseRef: "base-ref",
+					BaseSHA: "base-sha",
+					Pulls: []prowapi.Pull{{
+						Number:  1,
+						Author:  "author-name",
+						SHA:     "pull-sha",
+						HeadRef: "orig-branch-name",
+						Title:   "pull-title",
 					}},
 					PathAlias: "somewhere/else",
 				},
@@ -1172,7 +1252,7 @@ func TestProwJobToPod_setsTerminationGracePeriodSeconds(t *testing.T) {
 			name: "Existing GracePeriodSeconds is not overwritten",
 			prowjob: &prowapi.ProwJob{
 				Spec: prowapi.ProwJobSpec{
-					PodSpec: &coreapi.PodSpec{TerminationGracePeriodSeconds: utilpointer.Int64Ptr(60), Containers: []coreapi.Container{{}}},
+					PodSpec: &coreapi.PodSpec{TerminationGracePeriodSeconds: utilpointer.Int64(60), Containers: []coreapi.Container{{}}},
 					DecorationConfig: &prowapi.DecorationConfig{
 						UtilityImages: &prowapi.UtilityImages{},
 						Timeout:       &prowapi.Duration{Duration: 10 * time.Second},
@@ -1375,7 +1455,7 @@ func TestDecorate(t *testing.T) {
 						},
 						GCSCredentialsSecret:        &gCSCredentialsSecret,
 						DefaultServiceAccountName:   &defaultServiceAccountName,
-						SetLimitEqualsMemoryRequest: utilpointer.BoolPtr(true),
+						SetLimitEqualsMemoryRequest: utilpointer.Bool(true),
 					},
 					Refs: &prowapi.Refs{
 						Org: "org", Repo: "repo", BaseRef: "main", BaseSHA: "abcd1234",
@@ -1436,7 +1516,7 @@ func TestDecorate(t *testing.T) {
 						},
 						GCSCredentialsSecret:        &gCSCredentialsSecret,
 						DefaultServiceAccountName:   &defaultServiceAccountName,
-						SetLimitEqualsMemoryRequest: utilpointer.BoolPtr(true),
+						SetLimitEqualsMemoryRequest: utilpointer.Bool(true),
 						DefaultMemoryRequest:        resourcePtr("4Gi"),
 					},
 					Refs: &prowapi.Refs{

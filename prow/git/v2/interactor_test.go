@@ -39,29 +39,29 @@ func TestInteractor_Clone(t *testing.T) {
 	}{
 		{
 			name: "happy case",
-			dir:  "/else",
-			from: "/somewhere",
+			dir:  "/secondaryclone",
+			from: "/mirrorclone",
 			responses: map[string]execResponse{
-				"clone /somewhere /else": {
+				"clone /mirrorclone /secondaryclone": {
 					out: []byte(`ok`),
 				},
 			},
 			expectedCalls: [][]string{
-				{"clone", "/somewhere", "/else"},
+				{"clone", "/mirrorclone", "/secondaryclone"},
 			},
 			expectedErr: false,
 		},
 		{
 			name: "clone fails",
-			dir:  "/else",
-			from: "/somewhere",
+			dir:  "/secondaryclone",
+			from: "/mirrorclone",
 			responses: map[string]execResponse{
-				"clone /somewhere /else": {
+				"clone /mirrorclone /secondaryclone": {
 					err: errors.New("oops"),
 				},
 			},
 			expectedCalls: [][]string{
-				{"clone", "/somewhere", "/else"},
+				{"clone", "/mirrorclone", "/secondaryclone"},
 			},
 			expectedErr: true,
 		},
@@ -80,6 +80,118 @@ func TestInteractor_Clone(t *testing.T) {
 				logger:   logrus.WithField("test", testCase.name),
 			}
 			actualErr := i.Clone(testCase.from)
+			if testCase.expectedErr && actualErr == nil {
+				t.Errorf("%s: expected an error but got none", testCase.name)
+			}
+			if !testCase.expectedErr && actualErr != nil {
+				t.Errorf("%s: expected no error but got one: %v", testCase.name, actualErr)
+			}
+			if actual, expected := e.records, testCase.expectedCalls; !reflect.DeepEqual(actual, expected) {
+				t.Errorf("%s: got incorrect git calls: %v", testCase.name, diff.ObjectReflectDiff(actual, expected))
+			}
+		})
+	}
+}
+
+func TestInteractor_CloneWithRepoOpts(t *testing.T) {
+	var testCases = []struct {
+		name          string
+		dir           string
+		from          string
+		remote        RemoteResolver
+		repoOpts      RepoOpts
+		responses     map[string]execResponse
+		expectedCalls [][]string
+		expectedErr   bool
+	}{
+		{
+			name:     "blank RepoOpts",
+			dir:      "/secondaryclone",
+			from:     "/mirrorclone",
+			repoOpts: RepoOpts{},
+			responses: map[string]execResponse{
+				"clone /mirrorclone /secondaryclone": {
+					out: []byte(`ok`),
+				},
+			},
+			expectedCalls: [][]string{
+				{"clone", "/mirrorclone", "/secondaryclone"},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "shared git objects",
+			dir:  "/secondaryclone",
+			from: "/mirrorclone",
+			repoOpts: RepoOpts{
+				SparseCheckoutDirs:           nil,
+				ShareObjectsWithPrimaryClone: true,
+			},
+			responses: map[string]execResponse{
+				"clone --shared /mirrorclone /secondaryclone": {
+					out: []byte(`ok`),
+				},
+			},
+			expectedCalls: [][]string{
+				{"clone", "--shared", "/mirrorclone", "/secondaryclone"},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "shared git objects and sparse checkout (toplevel only)",
+			dir:  "/secondaryclone",
+			from: "/mirrorclone",
+			repoOpts: RepoOpts{
+				SparseCheckoutDirs:           []string{},
+				ShareObjectsWithPrimaryClone: true,
+			},
+			responses: map[string]execResponse{
+				"clone --shared --sparse /mirrorclone /secondaryclone": {
+					out: []byte(`ok`),
+				},
+			},
+			expectedCalls: [][]string{
+				{"clone", "--shared", "--sparse", "/mirrorclone", "/secondaryclone"},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "shared git objects and sparse checkout (toplevel+subdirs)",
+			dir:  "/secondaryclone",
+			from: "/mirrorclone",
+			repoOpts: RepoOpts{
+				SparseCheckoutDirs:           []string{"a", "b"},
+				ShareObjectsWithPrimaryClone: true,
+			},
+			responses: map[string]execResponse{
+				"clone --shared --sparse /mirrorclone /secondaryclone": {
+					out: []byte(`ok`),
+				},
+				"-C /secondaryclone sparse-checkout set a b": {
+					out: []byte(`ok`),
+				},
+			},
+			expectedCalls: [][]string{
+				{"clone", "--shared", "--sparse", "/mirrorclone", "/secondaryclone"},
+				{"-C", "/secondaryclone", "sparse-checkout", "set", "a", "b"},
+			},
+			expectedErr: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			e := fakeExecutor{
+				records:   [][]string{},
+				responses: testCase.responses,
+			}
+			i := interactor{
+				executor: &e,
+				remote:   testCase.remote,
+				dir:      testCase.dir,
+				logger:   logrus.WithField("test", testCase.name),
+			}
+			actualErr := i.CloneWithRepoOpts(testCase.from, testCase.repoOpts)
 			if testCase.expectedErr && actualErr == nil {
 				t.Errorf("%s: expected an error but got none", testCase.name)
 			}
@@ -360,44 +472,36 @@ func TestInteractor_BranchExists(t *testing.T) {
 	}
 }
 
-func TestInteractor_CommitExists(t *testing.T) {
+func TestInteractor_ObjectExists(t *testing.T) {
 	var testCases = []struct {
 		name          string
+		object        string
 		responses     map[string]execResponse
 		expectedCalls [][]string
 		expectedOut   bool
-		expectedErr   bool
+		// ObjectExists always returns a nil error, so we don't test it.
 	}{
 		{
-			name: "happy case",
+			name:   "happy case",
+			object: "abc123",
 			responses: map[string]execResponse{
-				"branch --contains abc123": {out: []byte("")},
+				"cat-file -e abc123": {out: []byte("")},
 			},
 			expectedCalls: [][]string{
-				{"branch", "--contains", "abc123"},
+				{"cat-file", "-e", "abc123"},
 			},
 			expectedOut: true,
 		},
 		{
-			name: "Does not exist",
+			name:   "Does not exist",
+			object: "000000",
 			responses: map[string]execResponse{
-				"branch --contains abc123": {out: []byte(""), err: errors.New("error: no such commit abc123")},
+				"cat-file -e 000000": {out: []byte(""), err: errors.New("")},
 			},
 			expectedCalls: [][]string{
-				{"branch", "--contains", "abc123"},
+				{"cat-file", "-e", "000000"},
 			},
 			expectedOut: false,
-		},
-		{
-			name: "error",
-			responses: map[string]execResponse{
-				"branch --contains abc123": {out: []byte(""), err: errors.New("error: malformed object name abc123")},
-			},
-			expectedCalls: [][]string{
-				{"branch", "--contains", "abc123"},
-			},
-			expectedOut: false,
-			expectedErr: true,
 		},
 	}
 
@@ -411,13 +515,7 @@ func TestInteractor_CommitExists(t *testing.T) {
 				executor: &e,
 				logger:   logrus.WithField("test", testCase.name),
 			}
-			actualOut, err := i.CommitExists("abc123")
-			if err != nil && !testCase.expectedErr {
-				t.Errorf("did not expect error, but got err: %v", err)
-			}
-			if err == nil && testCase.expectedErr {
-				t.Error("expected error but did not get one")
-			}
+			actualOut, _ := i.ObjectExists(testCase.object)
 			if testCase.expectedOut != actualOut {
 				t.Errorf("%s: got incorrect output: expected %v, got %v", testCase.name, testCase.expectedOut, actualOut)
 			}
@@ -1098,30 +1196,69 @@ func TestInteractor_Am(t *testing.T) {
 func TestInteractor_RemoteUpdate(t *testing.T) {
 	var testCases = []struct {
 		name          string
+		remote        RemoteResolver
 		responses     map[string]execResponse
 		expectedCalls [][]string
 		expectedErr   bool
 	}{
 		{
 			name: "happy case",
+			remote: func() (string, error) {
+				return "someone.com", nil
+			},
 			responses: map[string]execResponse{
+				"remote set-url origin someone.com": {
+					out: []byte(`ok`),
+				},
 				"remote update --prune": {
 					out: []byte(`ok`),
 				},
 			},
 			expectedCalls: [][]string{
+				{"remote", "set-url", "origin", "someone.com"},
 				{"remote", "update", "--prune"},
 			},
 			expectedErr: false,
 		},
 		{
-			name: "update fails",
+			name: "remote resolution fails",
+			remote: func() (string, error) {
+				return "", errors.New("oops")
+			},
+			responses:     map[string]execResponse{},
+			expectedCalls: [][]string{},
+			expectedErr:   true,
+		},
+		{
+			name: "setting remote URL fails",
+			remote: func() (string, error) {
+				return "someone.com", nil
+			},
 			responses: map[string]execResponse{
+				"remote set-url origin someone.com": {
+					err: errors.New("oops"),
+				},
+			},
+			expectedCalls: [][]string{
+				{"remote", "set-url", "origin", "someone.com"},
+			},
+			expectedErr: true,
+		},
+		{
+			name: "update fails",
+			remote: func() (string, error) {
+				return "someone.com", nil
+			},
+			responses: map[string]execResponse{
+				"remote set-url origin someone.com": {
+					out: []byte(`ok`),
+				},
 				"remote update --prune": {
 					err: errors.New("oops"),
 				},
 			},
 			expectedCalls: [][]string{
+				{"remote", "set-url", "origin", "someone.com"},
 				{"remote", "update", "--prune"},
 			},
 			expectedErr: true,
@@ -1136,6 +1273,7 @@ func TestInteractor_RemoteUpdate(t *testing.T) {
 			}
 			i := interactor{
 				executor: &e,
+				remote:   testCase.remote,
 				logger:   logrus.WithField("test", testCase.name),
 			}
 			actualErr := i.RemoteUpdate()

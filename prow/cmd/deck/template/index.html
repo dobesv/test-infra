@@ -1,7 +1,7 @@
 {{define "title"}}Prow Status{{end}}
 
 {{define "scripts"}}
-<script type="text/javascript" src="/static/prow_bundle.min.js"></script>
+<script type="text/javascript" src="/static/prow_bundle.min.js?v={{deckVersion}}"></script>
 <script type="text/javascript" src="prowjobs.js?var=allBuilds&omit=annotations,labels,decoration_config,pod_spec"></script>
 <script type="text/javascript">
   var spyglass = {{.SpyglassEnabled}};
@@ -72,7 +72,7 @@
           <th>Revision</th>
           <th>Spyglass</th>
           <th>Job</th>
-          <th>Started</th>
+          <th>Scheduled</th>
           <th>Duration</th>
         </tr>
         </thead>

@@ -38,7 +38,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
       - name: deck
-        image: gcr.io/k8s-prow/deck:v20230215-1f9eebbd96
+        image: gcr.io/k8s-prow/deck:v20231114-3897be59f6
         imagePullPolicy: Always
         ports:
         - name: http
@@ -63,7 +63,14 @@ spec:
         env:
         # Use KUBECONFIG envvar rather than --kubeconfig flag in order to provide multiple configs to merge.
         - name: KUBECONFIG
-          value: "/etc/kubeconfig/config:/etc/kubeconfig-build-test-infra-trusted/kubeconfig:/etc/kubeconfig-build-k8s-prow-builds/kubeconfig:/etc/kubeconfig-build-rules-k8s/kubeconfig"
+          value: "/etc/kubeconfig/config:/etc/kubeconfig-build-test-infra-trusted/kubeconfig:/etc/kubeconfig-build-k8s-prow-builds/kubeconfig:/etc/kubeconfig-build-rules-k8s/kubeconfig:/etc/kubeconfig-eks-prow-build-cluster/kubeconfig::/etc/kubeconfig-k8s-infra-kops-prow-build/kubeconfig"
+        # AWS_ variables needed to assume role to access the prow-build-cluster EKS cluster.
+        - name: AWS_ROLE_ARN
+          value: arn:aws:iam::468814281478:role/Prow-EKS-Admin
+        - name: AWS_WEB_IDENTITY_TOKEN_FILE
+          value: /var/run/secrets/aws-iam-token/serviceaccount/token
+        - name: AWS_REGION
+          value: us-east-2
         volumeMounts:
         - name: oauth-config
           mountPath: /etc/githuboauth
@@ -83,6 +90,12 @@ spec:
         - mountPath: /etc/kubeconfig-build-rules-k8s
           name: kubeconfig-build-rules-k8s
           readOnly: true
+        - mountPath: /etc/kubeconfig-eks-prow-build-cluster
+          name: kubeconfig-eks-prow-build-cluster
+          readOnly: true
+        - mountPath: /etc/kubeconfig-k8s-infra-kops-prow-build
+          name: kubeconfig-k8s-infra-kops-prow-build
+          readOnly: true
         - name: config
           mountPath: /etc/config
           readOnly: true
@@ -94,6 +107,10 @@ spec:
           readOnly: true
         - name: plugins
           mountPath: /etc/plugins
+          readOnly: true
+        # AWS IAM token needed to assume role to access the prow-build-cluster EKS cluster.
+        - name: aws-iam-token
+          mountPath: /var/run/secrets/aws-iam-token/serviceaccount
           readOnly: true
         livenessProbe:
           httpGet:
@@ -134,6 +151,14 @@ spec:
         secret:
           defaultMode: 420
           secretName: kubeconfig-build-rules-k8s
+      - name: kubeconfig-eks-prow-build-cluster
+        secret:
+          defaultMode: 420
+          secretName: kubeconfig-eks-prow-build-cluster
+      - name: kubeconfig-k8s-infra-kops-prow-build
+        secret:
+          defaultMode: 420
+          secretName: kubeconfig-k8s-infra-kops-prow-build
       - name: config
         configMap:
           name: config
@@ -143,3 +168,12 @@ spec:
       - name: plugins
         configMap:
           name: plugins
+      # AWS IAM token needed to assume role to access the prow-build-cluster EKS cluster.
+      - name: aws-iam-token
+        projected:
+          defaultMode: 420
+          sources:
+          - serviceAccountToken:
+              audience: sts.amazonaws.com
+              expirationSeconds: 86400
+              path: token

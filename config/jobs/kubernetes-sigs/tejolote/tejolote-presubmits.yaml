@@ -4,10 +4,10 @@ presubmits:
     always_run: true
     decorate: true
     path_alias: "sigs.k8s.io/tejolote"
-    cluster: k8s-infra-prow-build
+    cluster: eks-prow-build-cluster
     spec:
       containers:
-      - image: gcr.io/k8s-staging-releng/releng-ci:latest-go1.19-bullseye
+      - image: gcr.io/k8s-staging-releng/releng-ci:latest-go1.21-bookworm
         imagePullPolicy: Always
         command:
         - go
@@ -31,10 +31,10 @@ presubmits:
     always_run: true
     decorate: true
     path_alias: "sigs.k8s.io/tejolote"
-    cluster: k8s-infra-prow-build
+    cluster: eks-prow-build-cluster
     spec:
       containers:
-      - image: gcr.io/k8s-staging-releng/releng-ci:latest-go1.19-bullseye
+      - image: gcr.io/k8s-staging-releng/releng-ci:latest-go1.21-bookworm
         imagePullPolicy: Always
         command:
         - go

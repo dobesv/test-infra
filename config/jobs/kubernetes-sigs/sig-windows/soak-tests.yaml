@@ -13,16 +13,18 @@ presubmits:
       preset-dind-enabled: "true"
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
-      preset-azure-anonymous-pull: "true"
+      preset-azure-anonymous-pull: "true" # Sets REGISTRY which is needed when building CCM/CNM images
+      preset-capz-containerd-1-7-latest: "true"
+      preset-azure-capz-sa-cred: "true"
     extra_refs:
       - org: kubernetes-sigs
         repo: cluster-api-provider-azure
-        base_ref: release-1.7
+        base_ref: release-1.11
         path_alias: "sigs.k8s.io/cluster-api-provider-azure"
         workdir: true
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           command:
             - runner.sh
             - ./scripts/ci-entrypoint.sh
@@ -87,7 +89,7 @@ periodics:
       - "perfDashJobType: windows"
     labels:
       preset-azure-cred-only: "true"
-      preset-azure-anonymous-pull: "true"
+      preset-azure-anonymous-pull: "true" # Sets REGISTRY which is needed when building CCM/CNM images
     extra_refs:
       - org: kubernetes
         repo: perf-tests
@@ -100,7 +102,7 @@ periodics:
         workdir: true
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           command:
             - runner.sh
           args:
@@ -158,7 +160,7 @@ periodics:
         workdir: true
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           command:
             - runner.sh
           args:
@@ -189,16 +191,21 @@ periodics:
       preset-dind-enabled: "true"
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
-      preset-azure-anonymous-pull: "true"
+      preset-azure-anonymous-pull: "true" # Sets REGISTRY which is needed when building CCM/CNM images
+      preset-capz-containerd-1-7-latest: "true"
     extra_refs:
       - org: kubernetes-sigs
         repo: cluster-api-provider-azure
         base_ref: main
         path_alias: "sigs.k8s.io/cluster-api-provider-azure"
         workdir: true
+      - org: kubernetes-sigs
+        repo: cloud-provider-azure
+        base_ref: master
+        path_alias: "sigs.k8s.io/cloud-provider-azure"
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           command:
             - runner.sh
             - ./scripts/ci-entrypoint.sh
@@ -253,7 +260,9 @@ periodics:
       preset-dind-enabled: "true"
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
-      preset-azure-anonymous-pull: "true"
+      preset-azure-anonymous-pull: "true" # Sets REGISTRY which is needed when building CCM/CNM images
+      preset-capz-containerd-1-7-latest: "true"
+      preset-azure-capz-sa-cred: "true"
     extra_refs:
       - org: kubernetes
         repo: perf-tests
@@ -261,12 +270,12 @@ periodics:
         path_alias: "k8s.io/perf-tests"
       - org: kubernetes-sigs
         repo: cluster-api-provider-azure
-        base_ref: release-1.7
+        base_ref: release-1.11
         path_alias: "sigs.k8s.io/cluster-api-provider-azure"
         workdir: true
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           command:
             - runner.sh
             - ./scripts/ci-entrypoint.sh

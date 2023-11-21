@@ -37,7 +37,7 @@ func TestGatherOptions(t *testing.T) {
 	cases := []struct {
 		name     string
 		args     map[string]string
-		del      sets.String
+		del      sets.Set[string]
 		expected func(*options)
 		err      bool
 	}{
@@ -74,8 +74,7 @@ func TestGatherOptions(t *testing.T) {
 					JobConfigPathFlagName:                 "job-config-path",
 					ConfigPath:                            "yo",
 					SupplementalProwConfigsFileNameSuffix: "_prowconfig.yaml",
-					InRepoConfigCacheSize:                 100,
-					InRepoConfigCacheCopies:               1,
+					InRepoConfigCacheSize:                 200,
 				},
 				dryRun:                   true,
 				github:                   ghoptions,

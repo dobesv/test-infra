@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -37,10 +38,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	resourcev1alpha1 "github.com/tektoncd/pipeline/pkg/apis/resource/v1alpha1"
 	untypedcorev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -270,8 +271,10 @@ func (c *controller) enqueueKey(ctx string, obj interface{}) {
 
 type reconciler interface {
 	getProwJob(name string) (*prowjobv1.ProwJob, error)
+	listProwJobs(namespace string) ([]*prowjobv1.ProwJob, error)
 	patchProwJob(pj *prowjobv1.ProwJob, newpj *prowjobv1.ProwJob) (*prowjobv1.ProwJob, error)
 	getPipelineRun(context, namespace, name string) (*pipelinev1beta1.PipelineRun, error)
+	cancelPipelineRun(context string, pr *pipelinev1beta1.PipelineRun) error
 	deletePipelineRun(context, namespace, name string) error
 	createPipelineRun(context, namespace string, b *pipelinev1beta1.PipelineRun) (*pipelinev1beta1.PipelineRun, error)
 	pipelineID(prowjobv1.ProwJob) (string, string, error)
@@ -300,6 +303,11 @@ func (c *controller) patchProwJob(pj *prowjobv1.ProwJob, newpj *prowjobv1.ProwJo
 	return pjutil.PatchProwjob(context.TODO(), c.pjc.ProwV1().ProwJobs(c.pjNamespace()), logrus.NewEntry(logrus.StandardLogger()), *pj, *newpj)
 }
 
+func (c *controller) listProwJobs(namespace string) ([]*prowjobv1.ProwJob, error) {
+	pjnl := c.pjLister.ProwJobs(namespace)
+	return pjnl.List(labels.NewSelector())
+}
+
 func (c *controller) getPipelineRun(context, namespace, name string) (*pipelinev1beta1.PipelineRun, error) {
 	p, err := c.getPipelineConfig(context)
 	if err != nil {
@@ -317,6 +325,19 @@ func (c *controller) deletePipelineRun(pContext, namespace, name string) error {
 	return p.client.TektonV1beta1().PipelineRuns(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
+func (c *controller) cancelPipelineRun(pContext string, pipeline *pipelinev1beta1.PipelineRun) error {
+	p, err := c.getPipelineConfig(pContext)
+	if err != nil {
+		return err
+	}
+	if pipeline.Spec.Status == pipelinev1beta1.PipelineRunSpecStatusCancelledRunFinally {
+		return nil
+	}
+	pipeline.Spec.Status = pipelinev1beta1.PipelineRunSpecStatusCancelledRunFinally
+	_, err = p.client.TektonV1beta1().PipelineRuns(pipeline.Namespace).Update(context.TODO(), pipeline, metav1.UpdateOptions{})
+	return err
+}
+
 func (c *controller) createPipelineRun(pContext, namespace string, p *pipelinev1beta1.PipelineRun) (*pipelinev1beta1.PipelineRun, error) {
 	logrus.Debugf("createPipelineRun(%s,%s,%s)", pContext, namespace, p.Name)
 	pc, err := c.getPipelineConfig(pContext)
@@ -328,11 +349,12 @@ func (c *controller) createPipelineRun(pContext, namespace string, p *pipelinev1
 		return p, err
 	}
 	// Block until the pipelinerun is in the lister, otherwise we may attempt to create it again
-	err = wait.Poll(time.Second, 3*time.Second, func() (bool, error) {
-		_, err := c.getPipelineRun(pContext, namespace, p.Name)
-		return err == nil, err
+	var errOut error
+	wait.Poll(time.Second, 3*time.Second, func() (bool, error) {
+		_, errOut = c.getPipelineRun(pContext, namespace, p.Name)
+		return errOut == nil, nil
 	})
-	return p, err
+	return p, errOut
 }
 
 func (c *controller) now() metav1.Time {
@@ -352,6 +374,65 @@ func (c *controller) pipelineID(pj prowjobv1.ProwJob) (string, string, error) {
 	return id, url, nil
 }
 
+func createProwJobIdentifier(pj *prowjobv1.ProwJob) string {
+	var additionalIdentifier string
+	if pj.Spec.Refs != nil {
+		var pulls []int
+		for _, pull := range pj.Spec.Refs.Pulls {
+			pulls = append(pulls, pull.Number)
+		}
+		sort.Ints(pulls)
+		additionalIdentifier = fmt.Sprintf("%s/%s@%s %v", pj.Spec.Refs.Org, pj.Spec.Refs.Repo, pj.Spec.Refs.BaseRef, pulls)
+	}
+	return fmt.Sprintf("%s %s", pj.Spec.Job, additionalIdentifier)
+}
+
+func getFilteredProwJobs(id string, pjsToFilter []*prowjobv1.ProwJob) []*prowjobv1.ProwJob {
+	pjs := []*prowjobv1.ProwJob{}
+	for _, p := range pjsToFilter {
+		if runningState(p.Status.State) && id == createProwJobIdentifier(p) {
+			pjs = append(pjs, p)
+		}
+	}
+	sort.Slice(pjs, func(i, j int) bool {
+		return pjs[i].Status.StartTime.Before(&pjs[j].Status.StartTime)
+	})
+	return pjs
+}
+
+// abortDuplicatedProwJobs aborts all prowjobs with the same identifier as the given prowjob,
+// it can also abort the given if it is running and has the same identifier as the detected
+// newer prowjob. The function returns the updated prowjob if it was aborted, otherwise the
+// original prowjob is returned.
+func abortDuplicatedProwJobs(c reconciler, pj *prowjobv1.ProwJob) (*prowjobv1.ProwJob, error) {
+	if !runningState(pj.Status.State) || pj.Spec.Agent != prowjobv1.TektonAgent {
+		return pj, nil
+	}
+	id := createProwJobIdentifier(pj)
+	prowJobsToFilter, err := c.listProwJobs(pj.Namespace)
+	if err != nil {
+		return nil, err
+	}
+	pjs := getFilteredProwJobs(id, prowJobsToFilter)
+	// do not abort the newest prowjob
+	for i := 0; i < len(pjs)-1; i++ {
+		newpj := pjs[i].DeepCopy()
+		now := c.now()
+		newpj.Status.State = prowjobv1.AbortedState
+		newpj.Status.Description = descAborted
+		newpj.Status.CompletionTime = &now
+		newpj, err = c.patchProwJob(pjs[i], newpj)
+		if err != nil {
+			logrus.WithError(err).Error("failed to abort prowJob")
+			continue
+		}
+		if pj.Name == pjs[i].Name {
+			pj = newpj.DeepCopy()
+		}
+	}
+	return pj, nil
+}
+
 // reconcile ensures a tekton prowjob has a corresponding pipeline, updating the prowjob's status as the pipeline progresses.
 func reconcile(c reconciler, key string) error {
 	logrus.Debugf("reconcile: %s\n", key)
@@ -361,10 +442,8 @@ func reconcile(c reconciler, key string) error {
 		runtime.HandleError(err)
 		return nil
 	}
-
 	var wantPipelineRun bool
 	pj, err := c.getProwJob(name)
-	newpj := pj.DeepCopy()
 	switch {
 	case apierrors.IsNotFound(err):
 		// Do not want pipeline
@@ -381,6 +460,13 @@ func reconcile(c reconciler, key string) error {
 	case pj.DeletionTimestamp == nil:
 		wantPipelineRun = true
 	}
+	if !apierrors.IsNotFound(err) {
+		pj, err = abortDuplicatedProwJobs(c, pj)
+		if err != nil {
+			return fmt.Errorf("abort duplicated prowjobs: %w", err)
+		}
+	}
+	newpj := pj.DeepCopy()
 
 	var havePipelineRun bool
 	p, err := c.getPipelineRun(ctx, namespace, name)
@@ -416,9 +502,16 @@ func reconcile(c reconciler, key string) error {
 	case finalState(pj.Status.State):
 		logrus.Infof("Observed finished: %s", key)
 		return nil
+	case cancelledState(pj.Status.State):
+		if p != nil && p.Spec.Status != pipelinev1beta1.PipelineRunSpecStatusCancelledRunFinally {
+			if err = c.cancelPipelineRun(ctx, p); err != nil {
+				return fmt.Errorf("failed to cancel pipelineRun: %w", err)
+			}
+		}
+		return nil
 	case wantPipelineRun && !pj.Spec.HasPipelineRunSpec():
 		return fmt.Errorf("nil PipelineRunSpec in ProwJob/%s", key)
-	case wantPipelineRun && !havePipelineRun:
+	case wantPipelineRun && !havePipelineRun && !cancelledState(pj.Status.State):
 		id, url, err := c.pipelineID(*newpj)
 		if err != nil {
 			return fmt.Errorf("failed to get pipeline id: %w", err)
@@ -459,7 +552,7 @@ func updateProwJobState(c reconciler, key string, newPipelineRun bool, pj *prowj
 		if newpj.Status.StartTime.IsZero() {
 			newpj.Status.StartTime = c.now()
 		}
-		if newpj.Status.CompletionTime.IsZero() && finalState(state) {
+		if newpj.Status.CompletionTime.IsZero() && !runningState(state) {
 			now := c.now()
 			newpj.Status.CompletionTime = &now
 		}
@@ -477,10 +570,24 @@ func updateProwJobState(c reconciler, key string, newPipelineRun bool, pj *prowj
 // finalState returns true if the prowjob has already finished
 func finalState(status prowjobv1.ProwJobState) bool {
 	switch status {
-	case "", prowjobv1.PendingState, prowjobv1.TriggeredState:
-		return false
+	case prowjobv1.SuccessState, prowjobv1.FailureState, prowjobv1.ErrorState:
+		return true
 	}
-	return true
+	return false
+}
+
+// runningState returns true if the prowjob has running or pending state
+func runningState(status prowjobv1.ProwJobState) bool {
+	switch status {
+	case prowjobv1.PendingState, prowjobv1.TriggeredState:
+		return true
+	}
+	return false
+}
+
+// cancelledState returns true if the prowjob aborted or errored
+func cancelledState(status prowjobv1.ProwJobState) bool {
+	return status == prowjobv1.AbortedState
 }
 
 // description computes the ProwJobStatus description for this condition or falling back to a default if none is provided.
@@ -495,6 +602,7 @@ func description(cond apis.Condition, fallback string) string {
 }
 
 const (
+	descAborted          = "aborted"
 	descScheduling       = "scheduling"
 	descInitializing     = "initializing"
 	descRunning          = "running"
@@ -542,8 +650,8 @@ func pipelineMeta(name string, pj prowjobv1.ProwJob) metav1.ObjectMeta {
 	}
 }
 
-// makePipelineGitResource creates a pipeline git resource from prow job
-func makePipelineGitResource(name string, refs prowjobv1.Refs, pj prowjobv1.ProwJob) *resourcev1alpha1.PipelineResource {
+// makePipelineGitTask creates a pipeline git resource from prow job
+func makePipelineGitTask(name string, refs prowjobv1.Refs, pj prowjobv1.ProwJob) pipelinev1beta1.PipelineTask {
 	// Pick source URL
 	var sourceURL string
 	switch {
@@ -570,27 +678,24 @@ func makePipelineGitResource(name string, refs prowjobv1.Refs, pj prowjobv1.Prow
 		revision = refs.BaseRef
 	}
 
-	pr := resourcev1alpha1.PipelineResource{
-		ObjectMeta: pipelineMeta(name, pj),
-		Spec: resourcev1alpha1.PipelineResourceSpec{
-			Type: pipelinev1beta1.PipelineResourceTypeGit,
-			Params: []pipelinev1beta1.ResourceParam{
-				{
-					Name:  "url",
-					Value: sourceURL,
-				},
-				{
-					Name:  "revision",
-					Value: revision,
-				},
+	return pipelinev1beta1.PipelineTask{
+		TaskRef: &pipelinev1beta1.TaskRef{
+			Name: "git-clone",
+		},
+		Params: []pipelinev1beta1.Param{
+			{
+				Name:  "url",
+				Value: pipelinev1beta1.ParamValue{StringVal: sourceURL},
+			},
+			{
+				Name:  "revision",
+				Value: pipelinev1beta1.ParamValue{StringVal: revision},
 			},
 		},
 	}
-	return &pr
 }
 
-// makePipeline creates a PipelineRun and substitutes ProwJob managed pipeline resources with ResourceSpec instead of ResourceRef
-// so that we don't have to take care of potentially dangling created pipeline resources.
+// makePipelineRun creates a pipeline run from prow job
 func makePipelineRun(pj prowjobv1.ProwJob) (*pipelinev1beta1.PipelineRun, error) {
 	// First validate.
 	spec, err := pj.Spec.GetPipelineRunSpec()
@@ -618,41 +723,40 @@ func makePipelineRun(pj prowjobv1.ProwJob) (*pipelinev1beta1.PipelineRun, error)
 	if err != nil {
 		return nil, err
 	}
-	for _, key := range sets.StringKeySet(env).List() {
+	for _, key := range sets.List(sets.KeySet[string](env)) {
 		val := env[key]
 		// TODO: make this handle existing values/substitutions.
 		p.Spec.Params = append(p.Spec.Params, pipelinev1beta1.Param{
 			Name: key,
-			Value: pipelinev1beta1.ArrayOrString{
+			Value: pipelinev1beta1.ParamValue{
 				Type:      pipelinev1beta1.ParamTypeString,
 				StringVal: val,
 			},
 		})
 	}
 
-	// Inject resources from prow job.
-	for i, res := range p.Spec.Resources {
-		refName := res.ResourceRef.Name
-		var refs prowjobv1.Refs
-		var suffix string
-		if refName == config.ProwImplicitGitResource {
-			if pj.Spec.Refs == nil {
-				return nil, fmt.Errorf("%q requested on a ProwJob without an implicit git ref", config.ProwImplicitGitResource)
+	if p.Spec.PipelineSpec != nil {
+		for i, task := range p.Spec.PipelineSpec.Tasks {
+			taskName := task.TaskRef.Name
+			var refs prowjobv1.Refs
+			var suffix string
+			if taskName == config.ProwImplicitGitResource {
+				if pj.Spec.Refs == nil {
+					return nil, fmt.Errorf("%q requested on a ProwJob without an implicit git ref", config.ProwImplicitGitResource)
+				}
+				refs = *pj.Spec.Refs
+				suffix = "-implicit-ref"
+			} else if match := config.ReProwExtraRef.FindStringSubmatch(taskName); len(match) == 2 {
+				index, _ := strconv.Atoi(match[1]) // We can't error because the regexp only matches digits.
+				refs = pj.Spec.ExtraRefs[index]    // ValidatePipelineRunSpec made sure this is safe.
+				suffix = fmt.Sprintf("-extra-ref-%d", index)
+			} else {
+				continue
 			}
-			refs = *pj.Spec.Refs
-			suffix = "-implicit-ref"
-		} else if match := config.ReProwExtraRef.FindStringSubmatch(refName); len(match) == 2 {
-			index, _ := strconv.Atoi(match[1]) // We can't error because the regexp only matches digits.
-			refs = pj.Spec.ExtraRefs[index]    // ValidatePipelineRunSpec made sure this is safe.
-			suffix = fmt.Sprintf("-extra-ref-%d", index)
-		} else {
-			continue
+
+			gitTask := makePipelineGitTask(pj.Name+suffix, refs, pj)
+			p.Spec.PipelineSpec.Tasks[i] = gitTask
 		}
-		// Change resource ref to resource spec
-		name := pj.Name + suffix
-		resource := makePipelineGitResource(name, refs, pj)
-		p.Spec.Resources[i].ResourceRef = nil
-		p.Spec.Resources[i].ResourceSpec = &resource.Spec
 	}
 
 	return &p, nil

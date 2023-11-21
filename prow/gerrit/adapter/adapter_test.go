@@ -19,6 +19,7 @@ package adapter
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -88,8 +89,8 @@ func (f *fgc) QueryChanges(lastUpdate client.LastSyncState, rateLimit int) map[s
 	return nil
 }
 
-func (f *fgc) QueryChangesForInstance(instance string, lastState client.LastSyncState, rateLimit int) []client.ChangeInfo {
-	return nil
+func (f *fgc) QueryChangesForProject(instance, project string, lastUpdate time.Time, rateLimit int, additionalFilters ...string) ([]gerrit.ChangeInfo, error) {
+	return nil, nil
 }
 
 func (f *fgc) SetReview(instance, id, revision, message string, labels map[string]string) error {
@@ -161,6 +162,104 @@ func fakeProwYAMLGetter(
 		Postsubmits: postsubmits,
 	}
 	return &res, nil
+}
+
+func TestSkipChangeProcessingChecks(t *testing.T) {
+	now := time.Now()
+	instance := "gke-host"
+	project := "private-cloud"
+	var lastUpdateTime = now.Add(-time.Hour)
+	c := &Controller{
+		configAgent: &config.Agent{},
+	}
+	presubmitTriggerRawString := "(?mi)/test\\s.*"
+	c.configAgent.Set(&config.Config{ProwConfig: config.ProwConfig{Gerrit: config.Gerrit{AllowedPresubmitTriggerReRawString: presubmitTriggerRawString}}})
+	presubmitTriggerRegex, err := regexp.Compile(presubmitTriggerRawString)
+	if err != nil {
+		t.Fatalf("failed to compile regex for allowed presubmit triggers: %s", err.Error())
+	}
+	c.configAgent.Config().Gerrit.AllowedPresubmitTriggerRe = &config.CopyableRegexp{Regexp: presubmitTriggerRegex}
+	cases := []struct {
+		name     string
+		instance string
+		change   gerrit.ChangeInfo
+		latest   time.Time
+		result   bool
+	}{
+		{
+			name:     "should not skip change processing when revision is new",
+			instance: instance,
+			change: gerrit.ChangeInfo{ID: "1", CurrentRevision: "10", Project: project,
+				Revisions: map[string]gerrit.RevisionInfo{
+					"10": {Created: makeStamp(now)},
+				}},
+			latest: lastUpdateTime,
+			result: false,
+		},
+		{
+			name:     "should not skip change processing when comment contains test related commands",
+			instance: instance,
+			change: gerrit.ChangeInfo{ID: "1", CurrentRevision: "10", Project: project,
+				Revisions: map[string]gerrit.RevisionInfo{
+					"10": {Number: 10, Created: makeStamp(now.Add(-2 * time.Hour))},
+				}, Messages: []gerrit.ChangeMessageInfo{
+					{
+						Date:           makeStamp(now),
+						Message:        "/test all",
+						RevisionNumber: 10,
+					},
+				}},
+			latest: lastUpdateTime,
+			result: false,
+		},
+		{
+			name:     "should not skip change processing when comment contains custom test name",
+			instance: instance,
+			change: gerrit.ChangeInfo{ID: "1", CurrentRevision: "10", Project: project,
+				Revisions: map[string]gerrit.RevisionInfo{
+					"10": {Number: 10, Created: makeStamp(now.Add(-2 * time.Hour))},
+				}, Messages: []gerrit.ChangeMessageInfo{
+					{
+						Date:           makeStamp(now),
+						Message:        "/test integration",
+						RevisionNumber: 10,
+					},
+				}},
+			latest: lastUpdateTime,
+			result: false,
+		},
+		{
+			name:     "should skip change processing when command does not conform to requirements",
+			instance: instance,
+			change: gerrit.ChangeInfo{ID: "1", CurrentRevision: "10", Project: project,
+				Revisions: map[string]gerrit.RevisionInfo{
+					"10": {Number: 10, Created: makeStamp(now.Add(-2 * time.Hour))},
+				}, Messages: []gerrit.ChangeMessageInfo{
+					{
+						Date:           makeStamp(now),
+						Message:        "LGTM",
+						RevisionNumber: 10,
+					},
+				}},
+			latest: lastUpdateTime,
+			result: true,
+		},
+		{
+			name:     "should not skip change processing for postsubmit jobs",
+			instance: instance,
+			change:   gerrit.ChangeInfo{Status: client.Merged},
+			latest:   lastUpdateTime,
+			result:   false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := c.shouldSkipProcessingChange(tc.change, tc.latest); got != tc.result {
+				t.Errorf("expected skip change processing checks returns %t, got %t", tc.result, got)
+			}
+		})
+	}
 }
 
 func TestHandleInRepoConfigError(t *testing.T) {
@@ -303,87 +402,6 @@ func TestCreateRefs(t *testing.T) {
 	}
 }
 
-func TestShouldSkipChangeProcessing(t *testing.T) {
-	now := time.Now()
-	cases := []struct {
-		name       string
-		change     gerrit.ChangeInfo
-		lastUpdate time.Time
-		expected   bool
-	}{
-		{
-			name: "should skip change processing if no code change since last update",
-			change: client.ChangeInfo{
-				CurrentRevision: "1",
-				Revisions: map[string]gerrit.RevisionInfo{
-					"1": {
-						Number:  1,
-						Created: makeStamp(now.Add(time.Hour)),
-						Kind:    gerrit.NoCodeChange,
-					},
-				},
-			},
-			lastUpdate: now,
-			expected:   true,
-		},
-		{
-			name: "should not skip change processing if some revisions have code change since last update",
-			change: client.ChangeInfo{
-				CurrentRevision: "3",
-				Revisions: map[string]gerrit.RevisionInfo{
-					"1": {
-						Number:  1,
-						Created: makeStamp(now.Add(time.Hour)),
-						Kind:    gerrit.NoCodeChange,
-					},
-					"2": {
-						Number:  2,
-						Created: makeStamp(now.Add(2 * time.Hour)),
-						Kind:    gerrit.MergeFirstParentUpdate,
-					},
-					"3": {
-						Number:  3,
-						Created: makeStamp(now.Add(3 * time.Hour)),
-						Kind:    gerrit.NoCodeChange,
-					},
-				},
-			},
-			lastUpdate: now,
-			expected:   false,
-		},
-		{
-			name: "should not skip change processing if change comment demands testing",
-			change: client.ChangeInfo{
-				CurrentRevision: "1",
-				Revisions: map[string]gerrit.RevisionInfo{
-					"1": {
-						Number:  1,
-						Created: makeStamp(now.Add(-time.Hour)),
-						Kind:    gerrit.NoCodeChange,
-					},
-				},
-				Messages: []gerrit.ChangeMessageInfo{
-					{
-						Message:        "/test",
-						RevisionNumber: 1,
-						Date:           makeStamp(now.Add(time.Hour)),
-					},
-				},
-			},
-			lastUpdate: now,
-			expected:   false,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if r := shouldSkipChangeProcessing(tc.change, tc.lastUpdate); r != tc.expected {
-				t.Errorf("expected shouldSkipChangeProcessing(%+v, %v) returns %t, expected %t", tc.change, tc.lastUpdate, r, tc.expected)
-			}
-		})
-	}
-}
-
 func TestFailedJobs(t *testing.T) {
 	const (
 		me      = 314159
@@ -420,7 +438,7 @@ func TestFailedJobs(t *testing.T) {
 	cases := []struct {
 		name     string
 		messages []gerrit.ChangeMessageInfo
-		expected sets.String
+		expected sets.Set[string]
 	}{
 		{
 			name: "basically works",
@@ -436,7 +454,7 @@ func TestFailedJobs(t *testing.T) {
 				}), nil),
 				message("also ignore this", nil),
 			},
-			expected: sets.NewString("should-fail", "should-abort"),
+			expected: sets.New[string]("should-fail", "should-abort"),
 		},
 		{
 			name: "ignore report from someone else",
@@ -452,7 +470,7 @@ func TestFailedJobs(t *testing.T) {
 					"should-fail": prowapi.FailureState,
 				}), nil),
 			},
-			expected: sets.NewString("should-fail"),
+			expected: sets.New[string]("should-fail"),
 		},
 		{
 			name: "ignore failures on other revisions",
@@ -468,7 +486,7 @@ func TestFailedJobs(t *testing.T) {
 					msg.RevisionNumber = old
 				}),
 			},
-			expected: sets.NewString("current-fail"),
+			expected: sets.New[string]("current-fail"),
 		},
 		{
 			name: "ignore jobs in my earlier report",
@@ -490,7 +508,7 @@ func TestFailedJobs(t *testing.T) {
 					"still-pass":       prowapi.SuccessState,
 				}), nil),
 			},
-			expected: sets.NewString("old-broken", "new-broken", "still-fail", "pass-then-failed"),
+			expected: sets.New[string]("old-broken", "new-broken", "still-fail", "pass-then-failed"),
 		},
 		{
 			// https://en.wikipedia.org/wiki/Gravitational_redshift
@@ -511,7 +529,7 @@ func TestFailedJobs(t *testing.T) {
 					change.Date.Time = change.Date.Time.Add(-time.Hour)
 				}),
 			},
-			expected: sets.NewString("earth-broken", "blackhole-broken", "fail-earth-pass-blackhole"),
+			expected: sets.New[string]("earth-broken", "blackhole-broken", "fail-earth-pass-blackhole"),
 		},
 	}
 
@@ -524,8 +542,8 @@ func TestFailedJobs(t *testing.T) {
 	}
 }
 
-func createTestRepoCache(t *testing.T, ca *fca) (*config.InRepoConfigCacheHandler, error) {
-	// processChange takes a ClientFactory. If provided a nil clientFactory it will skip inRepoConfig
+func createTestRepoCache(t *testing.T, ca *fca) (*config.InRepoConfigCache, error) {
+	// triggerJobs takes a ClientFactory. If provided a nil clientFactory it will skip inRepoConfig
 	// otherwise it will get the prow yaml using the client provided. We are mocking ProwYamlGetter
 	// so we are creating a localClientFactory but leaving it unpopulated.
 	var cf git.ClientFactory
@@ -545,18 +563,14 @@ func createTestRepoCache(t *testing.T, ca *fca) (*config.InRepoConfigCacheHandle
 
 	// Initialize cache for fetching Presubmit and Postsubmit information. If
 	// the cache cannot be initialized, exit with an error.
-	cache, err := config.NewInRepoConfigCacheHandler(
-		10,
-		ca,
-		config.NewInRepoConfigGitCache(cf),
-		1)
+	cache, err := config.NewInRepoConfigCache(10, ca, cf)
 	if err != nil {
 		t.Errorf("error creating cache: %v", err)
 	}
 	return cache, nil
 }
 
-func TestProcessChange(t *testing.T) {
+func TestTriggerJobs(t *testing.T) {
 	testInstance := "https://gerrit"
 	var testcases = []struct {
 		name           string
@@ -593,161 +607,6 @@ func TestProcessChange(t *testing.T) {
 			instancesMap: map[string]*gerrit.AccountInfo{testInstance: {AccountID: 42}},
 			instance:     testInstance,
 			wantError:    true,
-		},
-		{
-			name: "changes with no code change in new revisions should not trigger prow jobs",
-			change: client.ChangeInfo{
-				CurrentRevision: "1",
-				Project:         "test-infra",
-				Status:          "NEW",
-				Revisions: map[string]client.RevisionInfo{
-					"1": {
-						Created: stampNow,
-						Kind:    gerrit.NoCodeChange,
-					},
-				},
-			},
-			instancesMap: map[string]*gerrit.AccountInfo{testInstance: {AccountID: 42}},
-			instance:     testInstance,
-			wantError:    false,
-			wantPjs:      nil,
-		},
-		{
-			name: "wrong test commands on new revisions with no code change should not trigger prow jobs",
-			change: client.ChangeInfo{
-				CurrentRevision: "1",
-				Project:         "test-infra",
-				Branch:          "baz",
-				Status:          "NEW",
-				Revisions: map[string]client.RevisionInfo{
-					"1": {
-						Number:  1,
-						Created: stampNow,
-						Kind:    gerrit.NoCodeChange,
-					},
-				},
-				Messages: []gerrit.ChangeMessageInfo{
-					{
-						Message:        "go /test foo",
-						RevisionNumber: 1,
-						Date:           makeStamp(timeNow.Add(time.Hour)),
-					},
-				},
-			},
-			instancesMap: map[string]*gerrit.AccountInfo{testInstance: {AccountID: 42}},
-			instance:     testInstance,
-		},
-		{
-			name: "changes with no code change in new revisions and retest command should trigger prow jobs",
-			change: client.ChangeInfo{
-				CurrentRevision: "1",
-				Project:         "test-infra",
-				Branch:          "retest-branch",
-				Status:          "NEW",
-				Revisions: map[string]client.RevisionInfo{
-					"1": {
-						Number:  1,
-						Created: stampNow,
-						Kind:    gerrit.NoCodeChange,
-					},
-				},
-				Messages: []gerrit.ChangeMessageInfo{
-					{
-						Message:        "/retest",
-						RevisionNumber: 1,
-						Date:           makeStamp(timeNow.Add(time.Hour)),
-					},
-				},
-			},
-			instancesMap: map[string]*gerrit.AccountInfo{testInstance: {AccountID: 42}},
-			instance:     testInstance,
-			wantPjs: []*prowapi.ProwJob{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"prow.k8s.io/gerrit-report-label": "Code-Review",
-							"created-by-prow":                 "true",
-							"prow.k8s.io/job":                 "always-runs-all-branches",
-							"prow.k8s.io/gerrit-revision":     "1",
-							"prow.k8s.io/type":                "presubmit",
-							"prow.k8s.io/context":             "always-runs-all-branches",
-							"prow.k8s.io/refs.org":            "gerrit",
-							"prow.k8s.io/refs.base_ref":       "retest-branch",
-							"prow.k8s.io/refs.pull":           "0",
-							"prow.k8s.io/refs.repo":           "test-infra",
-							"prow.k8s.io/gerrit-patchset":     "1",
-						},
-						Annotations: map[string]string{
-							"foo":                         "bar",
-							"prow.k8s.io/gerrit-id":       "",
-							"prow.k8s.io/job":             "always-runs-all-branches",
-							"prow.k8s.io/context":         "always-runs-all-branches",
-							"prow.k8s.io/gerrit-instance": "https://gerrit",
-						},
-					},
-					Spec: prowapi.ProwJobSpec{
-						Refs: &prowapi.Refs{
-							Org:      "https://gerrit",
-							Repo:     "test-infra",
-							RepoLink: "https://gerrit/test-infra",
-							BaseSHA:  "abc",
-							BaseRef:  "retest-branch",
-							BaseLink: "https://gerrit/test-infra/+/abc",
-							CloneURI: "https://gerrit/test-infra",
-							Pulls: []prowapi.Pull{
-								{
-									SHA:        "1",
-									Link:       "https://gerrit/c/test-infra/+/0",
-									CommitLink: "https://gerrit/test-infra/+/1",
-									AuthorLink: "https://gerrit/q/",
-								},
-							},
-						},
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"prow.k8s.io/gerrit-revision":     "1",
-							"prow.k8s.io/gerrit-patchset":     "1",
-							"created-by-prow":                 "true",
-							"prow.k8s.io/context":             "runs-on-all-but-baz-branch",
-							"prow.k8s.io/refs.repo":           "test-infra",
-							"prow.k8s.io/refs.org":            "gerrit",
-							"prow.k8s.io/refs.base_ref":       "retest-branch",
-							"prow.k8s.io/refs.pull":           "0",
-							"prow.k8s.io/type":                "presubmit",
-							"prow.k8s.io/job":                 "runs-on-all-but-baz-branch",
-							"prow.k8s.io/gerrit-report-label": "Code-Review",
-						},
-						Annotations: map[string]string{
-							"prow.k8s.io/gerrit-id":       "",
-							"prow.k8s.io/job":             "runs-on-all-but-baz-branch",
-							"prow.k8s.io/context":         "runs-on-all-but-baz-branch",
-							"prow.k8s.io/gerrit-instance": "https://gerrit",
-						},
-					},
-					Spec: prowapi.ProwJobSpec{
-						Refs: &prowapi.Refs{
-							Org:      "https://gerrit",
-							Repo:     "test-infra",
-							RepoLink: "https://gerrit/test-infra",
-							BaseSHA:  "abc",
-							BaseRef:  "retest-branch",
-							BaseLink: "https://gerrit/test-infra/+/abc",
-							CloneURI: "https://gerrit/test-infra",
-							Pulls: []prowapi.Pull{
-								{
-									SHA:        "1",
-									Link:       "https://gerrit/c/test-infra/+/0",
-									CommitLink: "https://gerrit/test-infra/+/1",
-									AuthorLink: "https://gerrit/q/",
-								},
-							},
-						},
-					},
-				},
-			},
 		},
 		{
 			name: "wrong project triggers no jobs",
@@ -3315,11 +3174,11 @@ func TestProcessChange(t *testing.T) {
 				prowJobClient:               fakeProwJobClient.ProwV1().ProwJobs("prowjobs"),
 				gc:                          &gc,
 				tracker:                     &fakeSync{val: fakeLastSync},
-				inRepoConfigCacheHandler:    cache,
+				inRepoConfigGetter:          cache,
 				inRepoConfigFailuresTracker: make(map[string]bool),
 			}
 
-			err = c.processChange(logrus.WithField("name", tc.name), tc.instance, tc.change)
+			err = c.triggerJobs(logrus.WithField("name", tc.name), tc.instance, tc.change)
 			if tc.wantError {
 				if err == nil {
 					t.Fatal("Expected error, got nil.")
@@ -3378,22 +3237,22 @@ func TestProcessChange(t *testing.T) {
 func TestIsProjectExemptFromHelp(t *testing.T) {
 	var testcases = []struct {
 		name                   string
-		projectsExemptFromHelp map[string]sets.String
+		projectsExemptFromHelp map[string]sets.Set[string]
 		instance               string
 		project                string
 		expected               bool
 	}{
 		{
 			name:                   "no project is exempt",
-			projectsExemptFromHelp: map[string]sets.String{},
+			projectsExemptFromHelp: map[string]sets.Set[string]{},
 			instance:               "foo",
 			project:                "bar",
 			expected:               false,
 		},
 		{
 			name: "the instance does not match",
-			projectsExemptFromHelp: map[string]sets.String{
-				"foo": sets.NewString("bar"),
+			projectsExemptFromHelp: map[string]sets.Set[string]{
+				"foo": sets.New[string]("bar"),
 			},
 			instance: "fuz",
 			project:  "bar",
@@ -3401,8 +3260,8 @@ func TestIsProjectExemptFromHelp(t *testing.T) {
 		},
 		{
 			name: "the instance matches but the project does not",
-			projectsExemptFromHelp: map[string]sets.String{
-				"foo": sets.NewString("baz"),
+			projectsExemptFromHelp: map[string]sets.Set[string]{
+				"foo": sets.New[string]("baz"),
 			},
 			instance: "fuz",
 			project:  "bar",
@@ -3410,8 +3269,8 @@ func TestIsProjectExemptFromHelp(t *testing.T) {
 		},
 		{
 			name: "the project is exempt",
-			projectsExemptFromHelp: map[string]sets.String{
-				"foo": sets.NewString("bar"),
+			projectsExemptFromHelp: map[string]sets.Set[string]{
+				"foo": sets.New[string]("bar"),
 			},
 			instance: "foo",
 			project:  "bar",

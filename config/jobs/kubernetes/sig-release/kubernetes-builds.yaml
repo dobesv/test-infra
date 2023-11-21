@@ -4,12 +4,14 @@ presubmits:
     optional: true
     always_run: false
     run_if_changed: '(^.go-version)|(^build/build-image/)|(^hack/lib/golang.sh)|(^build/common.sh)'
+    cluster: eks-prow-build-cluster
     decorate: true
+    path_alias: k8s.io/kubernetes
     labels:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/bootstrap:v20230206-22f4807bdc
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         args:
@@ -117,51 +119,3 @@ periodics:
     testgrid-tab-name: build-master-fast
     testgrid-alert-email: release-managers+alerts@kubernetes.io, release-team@kubernetes.io
     description: 'Ends up running: make quick-release'
-
-- interval: 4h
-  name: ci-release-build-packages-debs
-  decorate: true
-  spec:
-    containers:
-    - image: gcr.io/k8s-staging-releng/kubepkg:latest
-      imagePullPolicy: Always
-      command:
-      - ./kubepkg
-      args:
-      - debs
-      resources:
-        requests:
-          cpu: 4
-          memory: "8Gi"
-  rerun_auth_config:
-    github_team_slugs:
-      - org: kubernetes
-        slug: release-managers
-  annotations:
-    testgrid-alert-email: release-managers+alerts@kubernetes.io
-    testgrid-dashboards: sig-release-releng-informing
-    testgrid-tab-name: build-packages-debs
-
-- interval: 4h
-  name: ci-release-build-packages-rpms
-  decorate: true
-  spec:
-    containers:
-    - image: gcr.io/k8s-staging-releng/kubepkg-rpm:latest
-      imagePullPolicy: Always
-      command:
-      - ./kubepkg
-      args:
-      - rpms
-      resources:
-        requests:
-          cpu: 4
-          memory: "8Gi"
-  rerun_auth_config:
-    github_team_slugs:
-      - org: kubernetes
-        slug: release-managers
-  annotations:
-    testgrid-alert-email: release-managers+alerts@kubernetes.io
-    testgrid-dashboards: sig-release-releng-informing
-    testgrid-tab-name: build-packages-rpms

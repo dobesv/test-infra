@@ -2,7 +2,14 @@ dashboard_groups:
 - dashboard_names:
   - redhat-assisted-installer
   - redhat-hypershift
+  - redhat-openshift-CSPI-QE-MSI-release-4.14-informing
+  - redhat-openshift-CSPI-QE-MSI-release-4.15-informing
   - redhat-openshift-informing
+  - redhat-openshift-lp-interop-release-4.13-informing
+  - redhat-openshift-lp-interop-release-4.14-informing
+  - redhat-openshift-lp-interop-release-4.15-informing
+  - redhat-openshift-lp-rosa-hypershift-release-4.12-informing
+  - redhat-openshift-lp-rosa-hypershift-release-4.13-informing
   - redhat-openshift-ocp-release-3.11-informing
   - redhat-openshift-ocp-release-4.1-blocking
   - redhat-openshift-ocp-release-4.1-informing
@@ -15,6 +22,10 @@ dashboard_groups:
   - redhat-openshift-ocp-release-4.12-informing
   - redhat-openshift-ocp-release-4.13-blocking
   - redhat-openshift-ocp-release-4.13-informing
+  - redhat-openshift-ocp-release-4.14-blocking
+  - redhat-openshift-ocp-release-4.14-informing
+  - redhat-openshift-ocp-release-4.15-blocking
+  - redhat-openshift-ocp-release-4.15-informing
   - redhat-openshift-ocp-release-4.2-blocking
   - redhat-openshift-ocp-release-4.2-informing
   - redhat-openshift-ocp-release-4.3-blocking
@@ -34,14 +45,15 @@ dashboard_groups:
   - redhat-openshift-ocp-release-4.9-blocking
   - redhat-openshift-ocp-release-4.9-broken
   - redhat-openshift-ocp-release-4.9-informing
-  - redhat-openshift-okd-release-4.10-blocking
   - redhat-openshift-okd-release-4.10-informing
-  - redhat-openshift-okd-release-4.11-blocking
   - redhat-openshift-okd-release-4.11-informing
-  - redhat-openshift-okd-release-4.12-blocking
   - redhat-openshift-okd-release-4.12-informing
   - redhat-openshift-okd-release-4.13-blocking
   - redhat-openshift-okd-release-4.13-informing
+  - redhat-openshift-okd-release-4.14-blocking
+  - redhat-openshift-okd-release-4.14-informing
+  - redhat-openshift-okd-release-4.15-blocking
+  - redhat-openshift-okd-release-4.15-informing
   - redhat-openshift-okd-release-4.3-informing
   - redhat-openshift-okd-release-4.4-informing
   - redhat-openshift-okd-release-4.5-informing
@@ -49,6 +61,7 @@ dashboard_groups:
   - redhat-openshift-okd-release-4.7-informing
   - redhat-openshift-okd-release-4.8-informing
   - redhat-openshift-okd-release-4.9-informing
+  - redhat-openshift-olm
   - redhat-openshift-osd
   - redhat-openshift-presubmit-master-gcp
   - redhat-openshift-serverless

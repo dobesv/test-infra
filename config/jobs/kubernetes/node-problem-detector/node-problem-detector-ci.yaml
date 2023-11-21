@@ -1,5 +1,7 @@
 periodics:
 - name: ci-npd-build
+  # TODO(kubernetes/kubernetes#119211): switch to k8s-infra-prow-build once it has been properly configured
+  cluster: default
   interval: 2h
   decorate: true
   labels:
@@ -12,12 +14,19 @@ periodics:
     path_alias: k8s.io/node-problem-detector
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:
       - ./test/build.sh
       - ci
+      resources:
+        limits:
+          cpu: 2
+          memory: 4Gi
+        requests:
+          cpu: 2
+          memory: 4Gi
       # docker-in-docker needs privileged mode
       securityContext:
         privileged: true
@@ -28,6 +37,7 @@ periodics:
     testgrid-alert-stale-results-hours: '24'
     testgrid-num-columns-recent: '30'
 - name: ci-npd-test
+  cluster: k8s-infra-prow-build
   interval: 2h
   decorate: true
   labels:
@@ -39,7 +49,7 @@ periodics:
     path_alias: k8s.io/node-problem-detector
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:
@@ -48,6 +58,13 @@ periodics:
       - >-
         ./test/build.sh install-lib &&
         make test
+      resources:
+        limits:
+          cpu: 2
+          memory: 4Gi
+        requests:
+          cpu: 2
+          memory: 4Gi
   annotations:
     testgrid-dashboards: sig-node-node-problem-detector
     testgrid-alert-email: zhenw@google.com,lantaol@google.com
@@ -55,6 +72,7 @@ periodics:
     testgrid-alert-stale-results-hours: '24'
     testgrid-num-columns-recent: '30'
 - name: ci-npd-e2e-node
+  cluster: k8s-infra-prow-build
   interval: 2h
   decorate: true
   labels:
@@ -75,7 +93,7 @@ periodics:
     path_alias: k8s.io/test-infra
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:
@@ -91,9 +109,16 @@ periodics:
         --gcp-zone=us-west1-b
         --node-tests=true
         "--node-args=--image-config-file=/home/prow/go/src/k8s.io/test-infra/jobs/e2e_node/containerd/image-config-systemd.yaml --extra-envs=${EXTRA_ENVS}"
-        '--node-test-args=--container-runtime-endpoint=unix:///run/containerd/containerd.sock --container-runtime-process-name=/home/containerd/usr/local/bin/containerd --container-runtime-pid-file= --kubelet-flags="--cgroup-driver=systemd --cgroups-per-qos=true --cgroup-root=/ --runtime-cgroups=/system.slice/containerd.service" --extra-log="{\"name\": \"containerd.log\", \"journalctl\": [\"-u\", \"containerd\"]}"'
+        '--node-test-args=--container-runtime-endpoint=unix:///run/containerd/containerd.sock --container-runtime-process-name=/home/containerd/usr/local/bin/containerd --container-runtime-pid-file= --kubelet-flags="--cgroup-driver=systemd --cgroups-per-qos=true --cgroup-root=/ --runtime-cgroups=/system.slice/containerd.service"'
         '--test_args=--nodes=8 --focus=NodeProblemDetector'
         --timeout=60m
+      resources:
+        limits:
+          cpu: 4
+          memory: 4Gi
+        requests:
+          cpu: 4
+          memory: 4Gi
   annotations:
     testgrid-dashboards: sig-node-node-problem-detector
     testgrid-alert-email: zhenw@google.com,lantaol@google.com
@@ -101,6 +126,7 @@ periodics:
     testgrid-alert-stale-results-hours: '24'
     testgrid-num-columns-recent: '30'
 - name: ci-npd-e2e-kubernetes-gce-gci
+  cluster: k8s-infra-prow-build
   interval: 2h
   decorate: true
   labels:
@@ -113,7 +139,7 @@ periodics:
     path_alias: k8s.io/node-problem-detector
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:
@@ -123,6 +149,7 @@ periodics:
         ./test/build.sh get-ci-env &&
         source ci.env &&
         /workspace/scenarios/kubernetes_e2e.py
+        --env=KUBE_GCE_NODE_IMAGE=cos-109-17800-0-47
         --cluster=
         --extract=ci/latest
         --provider=gce
@@ -131,6 +158,13 @@ periodics:
         --ginkgo-parallel=30
         --test_args=--ginkgo.focus=NodeProblemDetector
         --timeout=60m
+      resources:
+        limits:
+          cpu: 4
+          memory: 4Gi
+        requests:
+          cpu: 4
+          memory: 4Gi
   annotations:
     testgrid-dashboards: sig-node-node-problem-detector
     testgrid-alert-email: zhenw@google.com,lantaol@google.com
@@ -138,6 +172,7 @@ periodics:
     testgrid-alert-stale-results-hours: '24'
     testgrid-num-columns-recent: '30'
 - name: ci-npd-e2e-kubernetes-gce-gci-custom-flags
+  cluster: k8s-infra-prow-build
   interval: 2h
   decorate: true
   labels:
@@ -150,7 +185,7 @@ periodics:
     path_alias: k8s.io/node-problem-detector
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:
@@ -160,6 +195,7 @@ periodics:
         ./test/build.sh -f get-ci-env &&
         source ci-custom-flags.env &&
         /workspace/scenarios/kubernetes_e2e.py
+        --env=KUBE_GCE_NODE_IMAGE=cos-109-17800-0-47
         --cluster=
         --extract=ci/latest
         --provider=gce
@@ -168,6 +204,13 @@ periodics:
         --ginkgo-parallel=30
         --test_args=--ginkgo.focus=NodeProblemDetector
         --timeout=60m
+      resources:
+        limits:
+          cpu: 4
+          memory: 4Gi
+        requests:
+          cpu: 4
+          memory: 4Gi
   annotations:
     testgrid-dashboards: sig-node-node-problem-detector
     testgrid-alert-email: zhenw@google.com,lantaol@google.com
@@ -175,6 +218,7 @@ periodics:
     testgrid-alert-stale-results-hours: '24'
     testgrid-num-columns-recent: '30'
 - name: ci-npd-e2e-kubernetes-gce-ubuntu
+  cluster: k8s-infra-prow-build
   interval: 2h
   decorate: true
   labels:
@@ -187,7 +231,7 @@ periodics:
     path_alias: k8s.io/node-problem-detector
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:
@@ -203,8 +247,17 @@ periodics:
         --gcp-node-image=ubuntu
         --gcp-zone=us-west1-b
         --ginkgo-parallel=30
+        --image-family=pipeline-1-24
+        --image-project=ubuntu-os-gke-cloud
         --test_args=--ginkgo.focus=NodeProblemDetector
         --timeout=60m
+      resources:
+        limits:
+          cpu: 4
+          memory: 4Gi
+        requests:
+          cpu: 4
+          memory: 4Gi
   annotations:
     testgrid-dashboards: sig-node-node-problem-detector
     testgrid-alert-email: zhenw@google.com,lantaol@google.com
@@ -212,6 +265,7 @@ periodics:
     testgrid-alert-stale-results-hours: '24'
     testgrid-num-columns-recent: '30'
 - name: ci-npd-e2e-kubernetes-gce-ubuntu-custom-flags
+  cluster: k8s-infra-prow-build
   interval: 2h
   decorate: true
   labels:
@@ -224,7 +278,7 @@ periodics:
     path_alias: k8s.io/node-problem-detector
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:
@@ -240,8 +294,17 @@ periodics:
         --gcp-node-image=ubuntu
         --gcp-zone=us-west1-b
         --ginkgo-parallel=30
+        --image-family=pipeline-1-24
+        --image-project=ubuntu-os-gke-cloud
         --test_args=--ginkgo.focus=NodeProblemDetector
         --timeout=60m
+      resources:
+        limits:
+          cpu: 4
+          memory: 4Gi
+        requests:
+          cpu: 4
+          memory: 4Gi
   annotations:
     testgrid-dashboards: sig-node-node-problem-detector
     testgrid-alert-email: zhenw@google.com,lantaol@google.com

@@ -1,6 +1,7 @@
 presubmits:
     kubernetes-sigs/multi-tenancy:
     - name: pull-mtb-test
+      cluster: eks-prow-build-cluster
       annotations:
         testgrid-dashboards: wg-multi-tenancy-mtb
         testgrid-tab-name: presubmit-tests
@@ -12,9 +13,16 @@ presubmits:
       run_if_changed: "benchmarks/kubectl-mtb/.*"
       spec:
         containers:
-        - image: gcr.io/k8s-staging-test-infra/krte:v20230207-ce569a5e37-master
+        - image: gcr.io/k8s-staging-test-infra/krte:v20231114-d60f9688d6-master
           command:
             - wrapper.sh
             - ./benchmarks/kubectl-mtb/hack/ci-test.sh
           securityContext:
             privileged: true
+          resources:
+            limits:
+              cpu: 2
+              memory: 4Gi
+            requests:
+              cpu: 2
+              memory: 4Gi

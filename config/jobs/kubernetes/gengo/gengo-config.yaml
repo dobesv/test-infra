@@ -1,6 +1,7 @@
 presubmits:
   kubernetes/gengo:
   - name: pull-gengo-test
+    cluster: eks-prow-build-cluster
     annotations:
       testgrid-dashboards: sig-api-machinery-gengo
       testgrid-tab-name: test
@@ -10,15 +11,23 @@ presubmits:
     skip_report: false
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           command:
             - runner.sh
             - bash
           args:
             - -c
-            - 'go test -v -race ./...'
+            - 'go test -v -race ./... && (cd ./examples/defaulter-gen/_output_tests && go test -v -race ./...)'
+          resources:
+            requests:
+              memory: 4Gi
+              cpu: 2
+            limits:
+              memory: 4Gi
+              cpu: 2
 
   - name: pull-gengo-verify
+    cluster: eks-prow-build-cluster
     annotations:
       testgrid-dashboards: sig-api-machinery-gengo
       testgrid-tab-name: verify
@@ -28,11 +37,17 @@ presubmits:
     skip_report: false
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           command:
             - runner.sh
             - bash
           args:
            - -c
-           - |
-            go run ./examples/import-boss/main.go -i $(go list k8s.io/gengo/... | grep -v import-boss/tests | paste -sd',' -) --verify-only
+           - hack/verify-examples.sh
+          resources:
+            requests:
+              memory: 4Gi
+              cpu: 2
+            limits:
+              memory: 4Gi
+              cpu: 2

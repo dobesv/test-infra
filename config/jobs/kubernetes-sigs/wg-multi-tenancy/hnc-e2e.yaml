@@ -6,6 +6,7 @@
 postsubmits:
   kubernetes-sigs/hierarchical-namespaces:
   - name: hnc-postsubmit-test
+    cluster: eks-prow-build-cluster
     annotations:
       testgrid-dashboards: wg-multi-tenancy-hnc
       testgrid-tab-name: postsubmit-tests
@@ -22,21 +23,25 @@ postsubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/krte:v20230207-ce569a5e37-master
+      - image: gcr.io/k8s-staging-test-infra/krte:v20231114-d60f9688d6-master
         # workdir appears to be the base of the cloned repo
         command: ["wrapper.sh", "hack/prow-run-e2e.sh"]
         securityContext:
           privileged: true # Required for docker-in-docker
         resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
           requests:
-            cpu: 1
-            memory: "4Gi"
+            cpu: 2
+            memory: 4Gi
 
 # The periodics are the same as the postsubmits, but we run them occasionally
 # to ensure there's no flakiness during periods where there aren't lots of
 # submissions. Please keep them as closely in sync as possible.
 periodics:
 - name: hnc-periodic-test
+  cluster: eks-prow-build-cluster
   annotations:
     testgrid-dashboards: wg-multi-tenancy-hnc
     testgrid-tab-name: periodic-e2e-tests
@@ -58,11 +63,14 @@ periodics:
     path_alias: sigs.k8s.io/hierarchical-namespaces
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/krte:v20230207-ce569a5e37-master
+    - image: gcr.io/k8s-staging-test-infra/krte:v20231114-d60f9688d6-master
       command: ["wrapper.sh", "hack/prow-run-e2e.sh"]
       securityContext:
         privileged: true # Required for docker-in-docker
       resources:
+        limits:
+          cpu: 2
+          memory: 4Gi
         requests:
-          cpu: 1
-          memory: "4Gi"
+          cpu: 2
+          memory: 4Gi

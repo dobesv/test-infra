@@ -93,6 +93,8 @@ func TestPubSubSubscriptions(t *testing.T) {
 		Repo3HEADsha       = "97b866610ecdee8b90a7808b176c1fb3a859fa00"
 		Repo4HEADsha       = "4c028549d727a9deebf69b68b640837844222632"
 		Repo5HEADsha       = "c0ea4b30f3d9dc0bf1d3391d8e3a6bee39ad4de6"
+		Repo6HEADsha       = "907254e19d6138e3c62e4da1a23318aae6869f46"
+		Repo7HEADsha       = "aab56bb6515ea410ffff909a391c84e0ee849567"
 		CreateRepoRepo1    = `
 echo this-is-from-repo1 > README.txt
 git add README.txt
@@ -113,6 +115,53 @@ presubmits:
         - |
           set -eu
           echo "hello from trigger-inrepoconfig-presubmit-via-pubsub-repo%s"
+          cat README.txt
+`
+
+		// The Brancher field in the job config has an unexported 're' field.
+		// This job will fail if we are (1) fetching jobs through moonraker and (2)
+		// we are not defaulting the jobs. This is because some of the exported
+		// fields for Brancher will still come through to us client-side, which
+		// will trigger a "ShouldRun" check which will in turn try to use the
+		// unexported 're' field.
+		ProwJobDecoratedBrancher = `
+postsubmits:
+  - name: trigger-inrepoconfig-postsubmit-via-pubsub-repo%s
+    always_run: false
+    decorate: true
+    branches:
+    - ^master$
+    spec:
+      containers:
+      - image: localhost:5001/alpine
+        command:
+        - sh
+        args:
+        - -c
+        - |
+          set -eu
+          echo "hello from trigger-inrepoconfig-postsubmit-via-pubsub-repo%s"
+          cat README.txt
+`
+		ProwJobDecoratedPreset = `
+postsubmits:
+  - name: trigger-inrepoconfig-postsubmit-via-pubsub-repo%s
+    always_run: false
+    decorate: true
+    branches:
+    - ^master$
+    labels:
+      preset-foo: "true"
+    spec:
+      containers:
+      - image: localhost:5001/alpine
+        command:
+        - sh
+        args:
+        - -c
+        - |
+          set -eu
+          echo "hello from trigger-inrepoconfig-postsubmit-via-pubsub-repo%s"
           cat README.txt
 `
 		ProwJobDecoratedCloneURI = `
@@ -140,6 +189,8 @@ presubmits:
 	CreateRepo3 := createGerritRepo("3", fmt.Sprintf(ProwJobDecorated, "3", "3"))
 	CreateRepo4 := createGerritRepo("4", fmt.Sprintf(ProwJobDecorated, "4", "4"))
 	CreateRepo5 := createGerritRepo("5", fmt.Sprintf(ProwJobDecoratedCloneURI, "5", "https://fakegitserver.default/repo/org1/repo5", "5"))
+	CreateRepo6 := createGerritRepo("6", fmt.Sprintf(ProwJobDecoratedBrancher, "6", "6"))
+	CreateRepo7 := createGerritRepo("7", fmt.Sprintf(ProwJobDecoratedPreset, "7", "7"))
 
 	tests := []struct {
 		name       string
@@ -272,6 +323,43 @@ this-is-from-repo3
 `,
 		},
 		{
+			name: "inrepoconfig-presubmit3-repeat (same as inrepoconfig-presubmit3; exercise refresh-existing-primary-clone code path)",
+			// Skip repo setup on fakegitserver because it was already created
+			// in the previous test case.
+			repoSetups: []fakegitserver.RepoSetup{},
+			msg: fakepubsub.PubSubMessageForSub{
+				Attributes: map[string]string{
+					subscriber.ProwEventType: subscriber.PresubmitProwJobEvent,
+				},
+				Data: subscriber.ProwJobEvent{
+					Name: "trigger-inrepoconfig-presubmit-via-pubsub-repo3",
+					Refs: &prowjobv1.Refs{
+						Org:      "https://fakegitserver.default/repo",
+						Repo:     "repo3",
+						RepoLink: "https://fakegitserver.default/repo/repo3",
+						BaseSHA:  Repo3HEADsha,
+						BaseRef:  "master",
+						CloneURI: "https://fakegitserver.default/repo/repo3",
+						// We need a different number of pull SHAs (headSHAs) to
+						// avoid hitting the same ProwYAML cached entry from the
+						// previous test (to force the git fetch and lookup).
+						Pulls: []prowjobv1.Pull{
+							{
+								Number: 1,
+								SHA:    Repo3PR1sha,
+							},
+						},
+					},
+					Labels: map[string]string{
+						kube.GerritRevision: "123",
+					},
+				},
+			},
+			expected: `hello from trigger-inrepoconfig-presubmit-via-pubsub-repo3
+this-is-from-repo3
+`,
+		},
+		{
 			name: "inrepoconfig-presubmit4-with-nested-directory",
 			repoSetups: []fakegitserver.RepoSetup{
 				{
@@ -358,6 +446,72 @@ this-is-from-repo4
 this-is-from-repo5
 `,
 		},
+		{
+			name: "inrepoconfig-postsubmit6-with-branch-regex",
+			repoSetups: []fakegitserver.RepoSetup{
+				{
+					Name:      "org1/repo6",
+					Script:    CreateRepo6,
+					Overwrite: true,
+				},
+			},
+			msg: fakepubsub.PubSubMessageForSub{
+				Attributes: map[string]string{
+					subscriber.ProwEventType: subscriber.PostsubmitProwJobEvent,
+				},
+				Data: subscriber.ProwJobEvent{
+					Name: "trigger-inrepoconfig-postsubmit-via-pubsub-repo6",
+					Refs: &prowjobv1.Refs{
+						Org:      "https://fakegitserver.default/repo/org1",
+						Repo:     "repo6",
+						RepoLink: "https://fakegitserver.default/repo/org1/repo6",
+						BaseSHA:  Repo6HEADsha,
+						BaseRef:  "master",
+						CloneURI: "https://fakegitserver.default/repo/org1/repo6",
+						Pulls:    []prowjobv1.Pull{},
+					},
+					Labels: map[string]string{
+						kube.GerritRevision: "123",
+					},
+				},
+			},
+			expected: `hello from trigger-inrepoconfig-postsubmit-via-pubsub-repo6
+this-is-from-repo6
+`,
+		},
+		{
+			name: "inrepoconfig-postsubmit7-with-env-var",
+			repoSetups: []fakegitserver.RepoSetup{
+				{
+					Name:      "org1/repo7",
+					Script:    CreateRepo7,
+					Overwrite: true,
+				},
+			},
+			msg: fakepubsub.PubSubMessageForSub{
+				Attributes: map[string]string{
+					subscriber.ProwEventType: subscriber.PostsubmitProwJobEvent,
+				},
+				Data: subscriber.ProwJobEvent{
+					Name: "trigger-inrepoconfig-postsubmit-via-pubsub-repo7",
+					Refs: &prowjobv1.Refs{
+						Org:      "https://fakegitserver.default/repo/org1",
+						Repo:     "repo7",
+						RepoLink: "https://fakegitserver.default/repo/org1/repo7",
+						BaseSHA:  Repo7HEADsha,
+						BaseRef:  "master",
+						CloneURI: "https://fakegitserver.default/repo/org1/repo7",
+						Pulls:    []prowjobv1.Pull{},
+					},
+					Labels: map[string]string{
+						kube.GerritRevision: "123",
+					},
+				},
+			},
+			expected: `hello from trigger-inrepoconfig-postsubmit-via-pubsub-repo7
+this-is-from-repo7
+`,
+		},
 	}
 
 	// Ensure that all repos are named uniquely, because otherwise they clobber
@@ -372,6 +526,18 @@ this-is-from-repo5
 	}
 	if err := enforceUniqueRepoDirs(allRepoDirs); err != nil {
 		t.Fatal(err)
+	}
+
+	// Create all git repos on fakegitserver.
+	for _, tt := range tests {
+		// Set up repos on FGS for just this test case.
+		fgsClient := fakegitserver.NewClient("http://localhost/fakegitserver", 5*time.Second)
+		for _, repoSetup := range tt.repoSetups {
+			err := fgsClient.SetupRepo(repoSetup)
+			if err != nil {
+				t.Fatalf("FGS repo setup failed: %v", err)
+			}
+		}
 	}
 
 	for _, tt := range tests {
@@ -406,15 +572,6 @@ this-is-from-repo5
 			fpsClient, err := fakepubsub.NewClient("project1", fmt.Sprintf("%s:%d", PubsubEmulatorHost, *fakepubsubNodePort))
 			if err != nil {
 				t.Fatalf("Failed creating fakepubsub client")
-			}
-
-			// Set up repos on FGS for just this test case.
-			fgsClient := fakegitserver.NewClient("http://localhost/fakegitserver", 5*time.Second)
-			for _, repoSetup := range tt.repoSetups {
-				err := fgsClient.SetupRepo(repoSetup)
-				if err != nil {
-					t.Fatalf("FGS repo setup failed: %v", err)
-				}
 			}
 
 			// Create a unique test case ID (UID) for this particular test

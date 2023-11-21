@@ -324,6 +324,7 @@ func TestApply(test *testing.T) {
 func TestBranchRequirements(t *testing.T) {
 	cases := []struct {
 		name                            string
+		requireManuallyTriggeredJobs    bool
 		config                          []Presubmit
 		masterExpected, otherExpected   []string
 		masterOptional, otherOptional   []string
@@ -392,6 +393,73 @@ func TestBranchRequirements(t *testing.T) {
 			otherIfPresent:  []string{"run-if-changed", "skip-if-only-changed", "not-always"},
 			otherOptional:   []string{"skip-report", "optional"},
 		},
+		{
+			name:                         "require non optional jobs",
+			requireManuallyTriggeredJobs: true,
+			config: []Presubmit{
+				{
+					AlwaysRun: false,
+					Reporter: Reporter{
+						Context:    "always-run false",
+						SkipReport: false,
+					},
+				},
+				{
+					AlwaysRun: false,
+					Reporter: Reporter{
+						Context:    "always-run false skip master",
+						SkipReport: false,
+					},
+					Brancher: Brancher{
+						SkipBranches: []string{"master"},
+					},
+				},
+				{
+					RegexpChangeMatcher: RegexpChangeMatcher{
+						RunIfChanged: "foo",
+					},
+					AlwaysRun: false,
+					Reporter: Reporter{
+						Context:    "run-if-changed",
+						SkipReport: false,
+					},
+				},
+				{
+					RegexpChangeMatcher: RegexpChangeMatcher{
+						SkipIfOnlyChanged: "foo",
+					},
+					AlwaysRun: false,
+					Reporter: Reporter{
+						Context:    "skip-if-only-changed",
+						SkipReport: false,
+					},
+				},
+				{
+					AlwaysRun: true,
+					Reporter: Reporter{
+						Context:    "skip-report",
+						SkipReport: true,
+					},
+					Brancher: Brancher{
+						SkipBranches: []string{"master"},
+					},
+				},
+				{
+					AlwaysRun: true,
+					Reporter: Reporter{
+						Context:    "optional",
+						SkipReport: false,
+					},
+					Optional: true,
+				},
+			},
+			masterExpected:  []string{"always-run false"},
+			masterIfPresent: []string{"run-if-changed", "skip-if-only-changed"},
+			masterOptional:  []string{"optional"},
+			otherExpected:   []string{"always-run false", "always-run false skip master"},
+			otherIfPresent:  []string{"run-if-changed", "skip-if-only-changed"},
+			otherOptional:   []string{"skip-report", "optional"},
+		},
 	}
 
 	for _, tc := range cases {
@@ -401,7 +469,7 @@ func TestBranchRequirements(t *testing.T) {
 		presubmits := map[string][]Presubmit{
 			"o/r": tc.config,
 		}
-		masterActual, masterActualIfPresent, masterOptional := BranchRequirements("master", presubmits["o/r"])
+		masterActual, masterActualIfPresent, masterOptional := BranchRequirements("master", presubmits["o/r"], &tc.requireManuallyTriggeredJobs)
 		if !reflect.DeepEqual(masterActual, tc.masterExpected) {
 			t.Errorf("%s: identified incorrect required contexts on branch master: %s", tc.name, diff.ObjectReflectDiff(masterActual, tc.masterExpected))
 		}
@@ -411,7 +479,7 @@ func TestBranchRequirements(t *testing.T) {
 		if !reflect.DeepEqual(masterActualIfPresent, tc.masterIfPresent) {
 			t.Errorf("%s: identified incorrect if-present contexts on branch master: %s", tc.name, diff.ObjectReflectDiff(masterActualIfPresent, tc.masterIfPresent))
 		}
-		otherActual, otherActualIfPresent, otherOptional := BranchRequirements("other", presubmits["o/r"])
+		otherActual, otherActualIfPresent, otherOptional := BranchRequirements("other", presubmits["o/r"], &tc.requireManuallyTriggeredJobs)
 		if !reflect.DeepEqual(masterActual, tc.masterExpected) {
 			t.Errorf("%s: identified incorrect required contexts on branch other: : %s", tc.name, diff.ObjectReflectDiff(otherActual, tc.otherExpected))
 		}
@@ -611,7 +679,7 @@ func TestConfig_GetBranchProtection(t *testing.T) {
 			config: Config{
 				ProwConfig: ProwConfig{
 					BranchProtection: BranchProtection{
-						AllowDisabledPolicies: utilpointer.BoolPtr(true),
+						AllowDisabledPolicies: utilpointer.Bool(true),
 						Policy: Policy{
 							Protect: yes,
 							Restrictions: &Restrictions{
@@ -679,7 +747,7 @@ func TestConfig_GetBranchProtection(t *testing.T) {
 			config: Config{
 				ProwConfig: ProwConfig{
 					BranchProtection: BranchProtection{
-						ProtectTested: utilpointer.BoolPtr(true),
+						ProtectTested: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org": {},
 						},
@@ -744,7 +812,7 @@ func TestConfig_GetBranchProtection(t *testing.T) {
 			config: Config{
 				ProwConfig: ProwConfig{
 					BranchProtection: BranchProtection{
-						ProtectTested: utilpointer.BoolPtr(true),
+						ProtectTested: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org": {},
 						},
@@ -773,8 +841,8 @@ func TestConfig_GetBranchProtection(t *testing.T) {
 			config: Config{
 				ProwConfig: ProwConfig{
 					BranchProtection: BranchProtection{
-						ProtectTested:                utilpointer.BoolPtr(true),
-						ProtectReposWithOptionalJobs: utilpointer.BoolPtr(true),
+						ProtectTested:                utilpointer.Bool(true),
+						ProtectReposWithOptionalJobs: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org": {},
 						},
@@ -807,7 +875,7 @@ func TestConfig_GetBranchProtection(t *testing.T) {
 			config: Config{
 				ProwConfig: ProwConfig{
 					BranchProtection: BranchProtection{
-						ProtectTested: utilpointer.BoolPtr(true),
+						ProtectTested: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org": {
 								Policy: Policy{
@@ -841,8 +909,8 @@ func TestConfig_GetBranchProtection(t *testing.T) {
 			config: Config{
 				ProwConfig: ProwConfig{
 					BranchProtection: BranchProtection{
-						AllowDisabledJobPolicies: utilpointer.BoolPtr(true),
-						ProtectTested:            utilpointer.BoolPtr(true),
+						AllowDisabledJobPolicies: utilpointer.Bool(true),
+						ProtectTested:            utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org": {
 								Repos: map[string]Repo{
@@ -914,7 +982,7 @@ func TestReposWithDisabledPolicy(t *testing.T) {
 								Contexts: []string{"hello", "world"},
 							},
 						},
-						AllowDisabledPolicies: utilpointer.BoolPtr(true),
+						AllowDisabledPolicies: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org1": {
 								Repos: map[string]Repo{
@@ -1021,7 +1089,7 @@ func TestUnprotectedBranches(t *testing.T) {
 								Contexts: []string{"hello", "world"},
 							},
 						},
-						AllowDisabledPolicies: utilpointer.BoolPtr(true),
+						AllowDisabledPolicies: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org1": {
 								Repos: map[string]Repo{
@@ -1061,7 +1129,7 @@ func TestUnprotectedBranches(t *testing.T) {
 								Contexts: []string{"hello", "world"},
 							},
 						},
-						AllowDisabledPolicies: utilpointer.BoolPtr(true),
+						AllowDisabledPolicies: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org1": {
 								Repos: map[string]Repo{
@@ -1157,7 +1225,7 @@ func TestUnprotectedBranches(t *testing.T) {
 			config: Config{
 				ProwConfig: ProwConfig{
 					BranchProtection: BranchProtection{
-						AllowDisabledJobPolicies: utilpointer.BoolPtr(true),
+						AllowDisabledJobPolicies: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org1": {
 								Repos: map[string]Repo{
@@ -1193,7 +1261,7 @@ func TestUnprotectedBranches(t *testing.T) {
 			config: Config{
 				ProwConfig: ProwConfig{
 					BranchProtection: BranchProtection{
-						AllowDisabledJobPolicies: utilpointer.BoolPtr(true),
+						AllowDisabledJobPolicies: utilpointer.Bool(true),
 						Orgs: map[string]Org{
 							"org1": {
 								Repos: map[string]Repo{

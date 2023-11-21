@@ -18,7 +18,7 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         args:
@@ -33,16 +33,53 @@ presubmits:
           requests:
             cpu: 6
             memory: 15Gi
-  - name: pull-kubernetes-integration-go-compatibility
-    cluster: k8s-infra-prow-build
+  - name: pull-kubernetes-integration-eks
+    cluster: eks-prow-build-cluster
     always_run: false
     optional: true
     decorate: true
     skip_branches:
     - release-\d+.\d+ # per-release job
     annotations:
+      fork-per-release: "false"
+      testgrid-dashboards: sig-testing-e2e-framework
+      testgrid-tab-name: integration-eks
+    path_alias: k8s.io/kubernetes
+    labels:
+      preset-service-account: "true"
+      preset-dind-enabled: "true"
+    spec:
+      containers:
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
+        command:
+        - runner.sh
+        env:
+        - name: KUBE_INTEGRATION_TEST_MAX_CONCURRENCY
+          value: "8"
+        - name: KUBE_TIMEOUT
+          value: "-timeout=1h30m"
+        args:
+        - ./hack/jenkins/test-dockerized.sh
+        # docker-in-docker needs privileged mode
+        securityContext:
+          privileged: true
+        resources:
+          limits:
+            cpu: 8
+            memory: 20Gi
+          requests:
+            cpu: 8
+            memory: 20Gi
+  - name: pull-kubernetes-integration-go-compatibility
+    cluster: k8s-infra-prow-build
+    always_run: true
+    decorate: true
+    skip_branches:
+    - .* # per-release job
+    annotations:
       fork-per-release: "true"
-      testgrid-dashboards: sig-testing-canaries
+      fork-per-release-replacements: "GO_VERSION= -> GO_VERSION={{.GoVersion}}"
+      testgrid-create-test-group: 'true'
       description: run with GO_VERSION set to the original go version used for this branch
     path_alias: k8s.io/kubernetes
     labels:
@@ -50,7 +87,7 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         env:
@@ -84,7 +121,7 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-go-canary
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-go-canary
         command:
         - runner.sh
         args:
@@ -101,7 +138,7 @@ presubmits:
             memory: 15Gi
 periodics:
 - interval: 1h
-  cluster: k8s-infra-prow-build
+  cluster: eks-prow-build-cluster
   name: ci-kubernetes-integration-master
   decorate: true
   extra_refs:
@@ -121,7 +158,7 @@ periodics:
     description: "Ends up running: make test-cmd test-integration"
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:

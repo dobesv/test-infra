@@ -19,7 +19,7 @@ postsubmits:
       spec:
         serviceAccountName: gcb-builder
         containers:
-          - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+          - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
             command:
               - /run.sh
             args:
@@ -29,6 +29,7 @@ postsubmits:
               # This is the same as above, but with -gcb appended.
               - --scratch-bucket=gs://k8s-staging-provider-aws-gcb
               - --env-passthrough=PULL_BASE_REF
+              - --with-git-dir
               - .
   # This is the github repo we'll build from. This block needs to be repeated for each repo.
   kubernetes-sigs/aws-ebs-csi-driver:
@@ -50,7 +51,7 @@ postsubmits:
       spec:
         serviceAccountName: gcb-builder
         containers:
-          - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+          - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
             command:
               - /run.sh
             args:
@@ -80,7 +81,7 @@ postsubmits:
       spec:
         serviceAccountName: gcb-builder
         containers:
-          - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+          - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
             command:
               - /run.sh
             args:

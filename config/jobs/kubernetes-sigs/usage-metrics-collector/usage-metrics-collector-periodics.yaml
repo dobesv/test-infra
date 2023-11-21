@@ -1,5 +1,6 @@
 periodics:
 - name: ci-usage-metrics-collector-test
+  cluster: eks-prow-build-cluster
   interval: 8h
   decorate: true
   extra_refs:
@@ -9,7 +10,7 @@ periodics:
     path_alias: sigs.k8s.io/usage-metrics-collector
   spec:
     containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - make
@@ -17,7 +18,7 @@ periodics:
         resources:
           requests:
             cpu: 1
-            memory: "1Gi"
+            memory: "2Gi"
           limits:
             cpu: 1
             memory: "2Gi"

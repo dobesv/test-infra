@@ -14,39 +14,39 @@ presubmits:
       preset-service-account: "true"
       preset-k8s-ssh: "true"
       preset-dind-enabled: "true"
+    cluster: eks-prow-build-cluster
+    decorate: true
+    decoration_config:
+      timeout: 240m
+    path_alias: k8s.io/kubernetes
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         env:
         - name: DOCKER_IN_DOCKER_IPV6_ENABLED
           value: "true"
         - name: CONTAINER_RUNTIME_ENDPOINT
           value: "/var/run/docker/containerd/containerd.sock"
+        command:
+        - runner.sh
+        - /workspace/scenarios/kubernetes_e2e.py
         args:
-        - --root=/go/src
-        - "--job=$(JOB_NAME)"
-        - "--repo=k8s.io/$(REPO_NAME)=$(PULL_REFS)"
-        - "--service-account=/etc/service-account/service-account.json"
-        - "--upload=gs://kubernetes-jenkins/pr-logs"
-        - "--timeout=140"
-        - --scenario=kubernetes_e2e
-        - --
         - --build=quick
         - --deployment=local
         - --ginkgo-parallel=1
         - --provider=local
         - --test_args=--ginkgo.focus=\[Conformance\] --ginkgo.skip=Serial|should.have.at.least.two.untainted
-        - --timeout=120m
+        - --timeout=180m
         # docker-in-docker needs privileged mode
         securityContext:
           privileged: true
         resources:
+          limits:
+            cpu: 4
+            memory: 6Gi
           requests:
-            # these are both a bit below peak usage during build
-            # this is mostly for building kubernetes
-            memory: "9000Mi"
-            # during the tests more like 3-20m is used
-            cpu: 2000m
+            cpu: 4
+            memory: 6Gi
     annotations:
       testgrid-create-test-group: 'true'
       testgrid-dashboards: sig-testing-misc
@@ -54,41 +54,44 @@ presubmits:
 
 periodics:
 - name: ci-kubernetes-local-e2e
-  interval: 60m
+  interval: 3h
   labels:
     preset-service-account: "true"
     preset-k8s-ssh: "true"
     preset-dind-enabled: "true"
+  cluster: eks-prow-build-cluster
+  decorate: true
+  decoration_config:
+    timeout: 240m
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       env:
       - name: DOCKER_IN_DOCKER_IPV6_ENABLED
         value: "true"
       - name: CONTAINER_RUNTIME_ENDPOINT
         value: "/var/run/docker/containerd/containerd.sock"
+      command:
+      - runner.sh
+      - /workspace/scenarios/kubernetes_e2e.py
       args:
-      - "--timeout=140"
-      - "--bare"
-      - --scenario=kubernetes_e2e
-      - --
       - --deployment=local
       - --extract=ci/latest
       - --extract-source
       - --ginkgo-parallel=1
       - --provider=local
       - --test_args=--ginkgo.focus=\[Conformance\] --ginkgo.skip=Serial|should.have.at.least.two.untainted
-      - --timeout=120m
+      - --timeout=180m
       # docker-in-docker needs privileged mode
       securityContext:
         privileged: true
       resources:
+        limits:
+          cpu: 4
+          memory: 6Gi
         requests:
-          # these are both a bit below peak usage during build
-          # this is mostly for building kubernetes
-          memory: "9000Mi"
-          # during the tests more like 3-20m is used
-          cpu: 2000m
+          cpu: 4
+          memory: 6Gi
   annotations:
     testgrid-dashboards: conformance-all, conformance-hack-local-up-cluster, sig-testing-misc
     testgrid-tab-name: local-up-cluster, master (dev)

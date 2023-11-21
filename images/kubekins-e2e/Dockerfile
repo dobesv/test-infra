@@ -17,7 +17,7 @@
 
 ARG OLD_BAZEL_VERSION
 FROM launcher.gcr.io/google/bazel:${OLD_BAZEL_VERSION} as old
-FROM gcr.io/k8s-staging-test-infra/bootstrap:v20230206-22f4807bdc
+FROM gcr.io/k8s-staging-test-infra/bootstrap:v20231103-ed2ada3ef0
 
 # hint to kubetest that it is in CI
 ENV KUBETEST_IN_DOCKER="true"
@@ -44,7 +44,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 # preinstall this for kops tests xref kubetest prepareAws(...)
 # TODO(krzyzacy,justisb,chrislovecnm): remove this
-RUN pip install --no-cache-dir awscli
+RUN pip install --no-cache-dir --break-system-packages awscli
 
 # install cfssl to prevent https://github.com/kubernetes/kubernetes/issues/55589
 # The invocation at the end is to prevent download failures downloads as in the bug.
@@ -59,8 +59,8 @@ RUN wget -q -O cfssl "https://pkg.cfssl.org/${CFSSL_VERSION}/cfssl_linux-amd64" 
 # replace kubectl with one from K8S_RELEASE
 ARG K8S_RELEASE=latest
 RUN rm -f $(which kubectl) && \
-    export KUBECTL_VERSION=$(curl https://storage.googleapis.com/kubernetes-release/release/${K8S_RELEASE}.txt) && \
-    wget https://storage.googleapis.com/kubernetes-release/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl -O /usr/local/bin/kubectl && \
+    export KUBECTL_VERSION=$(curl -L https://dl.k8s.io/release/${K8S_RELEASE}.txt) && \
+    wget https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl -O /usr/local/bin/kubectl && \
     chmod +x /usr/local/bin/kubectl
 
 # install go
@@ -93,9 +93,11 @@ RUN if [ -n "${KIND_VERSION}" ]; then \
     fi
 
 # install kubetest2 binaries if a version is provided
+# kubetest2 must be installed from git as the makefile embeds the git short hash and the day it was built.
 ARG KUBETEST2_VERSION
 RUN if [ -n "${KUBETEST2_VERSION}" ]; then \
-    go install sigs.k8s.io/kubetest2/...@"${KUBETEST2_VERSION}"; \
+    git clone https://github.com/kubernetes-sigs/kubetest2.git /tmp/kubetest2 && \
+    cd /tmp/kubetest2 && make install-all && rm -rf /tmp/kubetest2; \
     fi
 
 # configure dockerd to use mirror.gcr.io
@@ -118,3 +120,4 @@ ADD ["images/kubekins-e2e/kops-e2e-runner.sh", \
     "/workspace/"]
 ENV LOG_DUMP_SCRIPT_PATH "/workspace/log-dump.sh"
 RUN ["chmod", "+x", "/workspace/get-kube.sh", "/workspace/log-dump.sh"]
+

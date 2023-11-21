@@ -4,6 +4,7 @@ triggers:
 - repos:
   - kubernetes-sigs/cluster-api
   - kubernetes-sigs/cluster-api-provider-azure
+  - kubernetes-sigs/cluster-api-provider-vsphere
   - kubernetes-sigs/cloud-provider-azure
   join_org_url: "https://git.k8s.io/community/community-membership.md#member"
   only_org_members: true
@@ -25,8 +26,17 @@ triggers:
 - repos:
   - containerd/containerd
   join_org_url: "https://github.com/containerd/project/blob/main/MAINTAINERS"
+  trigger_github_workflows: true
+- repos:
+  - etcd-io
+  join_org_url: "https://github.com/etcd-io/etcd/blob/main/CONTRIBUTING.md"
+  trigger_github_workflows: true
 - repos:
   - bazelbuild
+- repos:
+  - kubernetes/utils
+  join_org_url: "https://git.k8s.io/community/community-membership.md#member"
+  trigger_github_workflows: true
 
 owners:
   mdyamlrepos:
@@ -62,7 +72,7 @@ approve:
   - kubernetes/cloud-provider-aws
   - kubernetes/kops
   - kubernetes/website
-  - kubernetes-sigs/aws-ebs-csi-driver
+  - kubernetes-sigs/external-dns
   require_self_approval: true
   lgtm_acts_as_approve: false
 - repos:
@@ -80,6 +90,7 @@ approve:
   - kubernetes-sigs/cluster-api-provider-azure
   - kubernetes-sigs/cluster-api-provider-vsphere
   - kubernetes-sigs/descheduler
+  - kubernetes-sigs/image-builder
   require_self_approval: true
   ignore_review_state: true
 - repos:
@@ -103,6 +114,7 @@ approve:
   - kubernetes-sigs/security-profiles-operator
   - kubernetes-sigs/slack-infra
   - kubernetes-sigs/tejolote
+  - kubernetes-sigs/testgrid-json-exporter
   - kubernetes-sigs/zeitgeist
   - kubernetes/community
   - kubernetes/k8s.io
@@ -118,6 +130,11 @@ approve:
 - repos:
   - kubernetes-sigs/gateway-api
   lgtm_acts_as_approve: false
+- repos:
+  - kubernetes-sigs/aws-ebs-csi-driver
+  require_self_approval: true
+  lgtm_acts_as_approve: false
+  ignore_review_state: true
 
 help:
   help_guidelines_summary: |
@@ -205,6 +222,7 @@ label:
 lgtm:
 - repos:
   - bazelbuild
+  - kubernetes-sigs/aws-ebs-csi-driver
   - kubernetes-sigs/bom
   - kubernetes-sigs/boskos
   - kubernetes-sigs/controller-runtime
@@ -214,6 +232,7 @@ lgtm:
   - kubernetes-sigs/downloadkubernetes
   - kubernetes-sigs/e2e-framework
   - kubernetes-sigs/etcdadm
+  - kubernetes-sigs/external-dns
   - kubernetes-sigs/promo-tools
   - kubernetes-sigs/k8s-gsm-tools
   - kubernetes-sigs/kind
@@ -229,7 +248,6 @@ lgtm:
   - kubernetes/cloud-provider-aws
   - kubernetes/k8s.io
   - kubernetes/kops
-  - kubernetes/publishing-bot
   - kubernetes/release
   - kubernetes/repo-infra
   - kubernetes/sig-release
@@ -240,7 +258,10 @@ lgtm:
   - kubernetes/website
   - kubernetes-sigs/node-feature-discovery
   - kubernetes-sigs/cluster-api
+  - kubernetes-sigs/cluster-api-operator
   - kubernetes-sigs/cluster-api-provider-azure
+  - kubernetes-sigs/cluster-api-provider-vsphere
+  - kubernetes-sigs/kueue
   store_tree_hash: true
 
 blockades:
@@ -304,6 +325,11 @@ blockades:
   exceptionregexps:
   - ^prow/(ANNOUNCEMENTS|README)\.md$
   explanation: "All Prow documentation (Markdown files) have moved to https://github.com/kubernetes-sigs/prow as part of https://github.com/kubernetes-sigs/prow/issues/4. Instructions for updating existing docs are at https://docs.prow.k8s.io/docs/contribution-guidelines/#updating-existing-docs."
+- repos:
+  - kubernetes/k8s.io
+  blockregexps:
+  - ^k8s.gcr.io/
+  explanation: "k8s.gcr.io Image registry is frozen from April 2023. Please update the manifests in registry.k8s.io folder instead"
 
 blunderbuss:
   max_request_count: 2
@@ -436,26 +462,34 @@ slack:
 
 milestone_applier:
   kubernetes/enhancements:
-    master: v1.27
+    master: v1.29
   kubernetes/kubernetes:
-    master: v1.27
+    master: v1.29
+    release-1.28: v1.28
+    release-1.27: v1.27
     release-1.26: v1.26
     release-1.25: v1.25
     release-1.24: v1.24
     release-1.23: v1.23
-    release-1.22: v1.22
   kubernetes/org:
-    main: v1.27
+    main: v1.29
   kubernetes/release:
-    master: v1.27
+    master: v1.29
   kubernetes/sig-release:
-    master: v1.27
+    master: v1.29
   kubernetes/test-infra:
-    master: v1.27
+    master: v1.29
+  kubernetes-sigs/kueue:
+    main: v0.6
+    release-0.3: v0.3
+    release-0.4: v0.4
+    release-0.5: v0.5
   kubernetes/k8s.io:
-    main: v1.27
+    main: v1.29
   kubernetes/kops:
-    master: v1.27
+    master: v1.29
+    release-1.28: v1.28
+    release-1.27: v1.27
     release-1.26: v1.26
     release-1.25: v1.25
     release-1.24: v1.24
@@ -468,7 +502,9 @@ milestone_applier:
     release-1.17: v1.17
     release-1.16: v1.16
   kubernetes-sigs/cluster-api:
-    main: v1.4
+    main: v1.6
+    release-1.5: v1.5
+    release-1.4: v1.4
     release-1.3: v1.3
     release-1.2: v1.2
     release-1.1: v1.1
@@ -481,9 +517,9 @@ milestone_applier:
     release-0.7: v0.7.x
     release-0.6: v0.6.x
   kubernetes-sigs/cluster-api-provider-azure:
-    main: v1.8
-    release-1.7: v1.7
-    release-1.6: v1.6
+    main: v1.13
+    release-1.12: v1.12
+    release-1.11: v1.11
   kubernetes-sigs/cluster-api-provider-digitalocean:
     main: v1.1.0
     release-1.0: v1.0.0
@@ -494,14 +530,17 @@ milestone_applier:
     release-0.4: v0.4
     release-0.3: v0.3
   kubernetes-sigs/cluster-api-provider-vsphere:
-    main: v1.6
+    main: v1.9
+    release-1.8: v1.8
+    release-1.7: v1.7
+    release-1.6: v1.6
     release-1.5: v1.5
     release-1.4: v1.4
     release-1.3: v1.3
   kubernetes-sigs/boskos:
     master: v1.23
   kubernetes/website:
-    dev-1.27: 1.27
+    dev-1.29: 1.29
 
 repo_milestone:
   # Default maintainer
@@ -535,6 +574,9 @@ repo_milestone:
   kubernetes-sigs/cluster-api-provider-vsphere:
     maintainers_team: cluster-api-provider-vsphere-maintainers
     maintainers_friendly_name: Cluster API Provider vSphere Maintainers
+  kubernetes-sigs/node-feature-discovery:
+    maintainers_team: node-feature-discovery-maintainers
+    maintainers_friendly_name: Node Feature Discovery Maintainers
   kubernetes/community:
     maintainers_team: community-milestone-maintainers
     maintainers_friendly_name: Community Milestone Maintainers
@@ -556,6 +598,9 @@ repo_milestone:
   kubernetes-sigs/kubebuilder:
     maintainers_team: kubebuilder-maintainers
     maintainers_friendly_name: Kubebuilder Maintainers
+  kubernetes-sigs/kueue:
+    maintainers_team: kueue-maintainers
+    maintainers_friendly_name: Kueue Maintainers
 
 project_config:
   project_org_configs:
@@ -677,6 +722,18 @@ require_matching_label:
     This issue is currently awaiting triage.
 
     SIG CLI takes a lead on issue triage for this repo, but any Kubernetes member can accept issues by applying the `triage/accepted` label.
+
+    The `triage/accepted` label can be added by org members by writing `/triage accepted` in a comment.
+- missing_label: needs-triage
+  org: kubernetes
+  repo: cloud-provider-gcp
+  issues: true
+  prs: true
+  regexp: ^triage/accepted$
+  missing_comment: |
+    This issue is currently awaiting triage.
+
+    If the repository mantainers determine this is a relevant issue, they will accept it by applying the `triage/accepted` label and provide further guidance.
 
     The `triage/accepted` label can be added by org members by writing `/triage accepted` in a comment.
 - missing_label: needs-sig
@@ -807,6 +864,18 @@ require_matching_label:
   issues: true
   prs: true
   regexp: ^priority/
+- missing_label: do-not-merge/needs-area
+  org: kubernetes-sigs
+  repo: cluster-api
+  issues: false
+  prs: true
+  regexp: ^area/
+  missing_comment: |
+    This PR is currently missing an area label, which is used to identify the modified component when generating release notes.
+
+    Area labels can be added by org members by writing `/area ${COMPONENT}` in a comment
+
+    Please see the [labels list](https://github.com/kubernetes/test-infra/blob/master/label_sync/labels.md#labels-that-apply-to-kubernetes-sigscluster-api-for-both-issues-and-prs) for possible areas.
 - missing_label: needs-triage
   org: kubernetes-sigs
   repo: cluster-api
@@ -817,6 +886,18 @@ require_matching_label:
     This issue is currently awaiting triage.
 
     If CAPI contributors determines this is a relevant issue, they will accept it by applying the `triage/accepted` label and provide further guidance.
+
+    The `triage/accepted` label can be added by org members by writing `/triage accepted` in a comment.
+- missing_label: needs-triage
+  org: kubernetes-sigs
+  repo: cluster-api-operator
+  issues: true
+  prs: false
+  regexp: ^triage/accepted$
+  missing_comment: |
+    This issue is currently awaiting triage.
+
+    If CAPI Operator contributors determines this is a relevant issue, they will accept it by applying the `triage/accepted` label and provide further guidance.
 
     The `triage/accepted` label can be added by org members by writing `/triage accepted` in a comment.
 - missing_label: needs-triage
@@ -934,6 +1015,24 @@ require_matching_label:
     The `triage/accepted` label can be added by org members by writing `/triage accepted` in a comment.
 - missing_label: needs-triage
   org: kubernetes-sigs
+  repo: gateway-api
+  issues: true
+  prs: true
+  regexp: ^triage/accepted$
+  missing_comment: |
+    This issue is currently awaiting triage.
+
+    If Gateway API community members determine this is a relevant issue, they will accept it by applying the `triage/accepted` label and provide further guidance.
+
+    The `triage/accepted` label can be added by org members by writing `/triage accepted` in a comment.
+- missing_label: needs-priority
+  org: kubernetes-sigs
+  repo: gateway-api
+  issues: true
+  prs: true
+  regexp: ^priority/
+- missing_label: needs-triage
+  org: kubernetes-sigs
   repo: metrics-server
   issues: true
   prs: true
@@ -990,6 +1089,10 @@ cherry_pick_unapproved:
     Adding the `do-not-merge/cherry-pick-not-approved` label.
 
     To merge this cherry pick, it must first be approved (`/lgtm` + `/approve`) by the relevant OWNERS.
+
+    If you **didn't cherry-pick** this change to [**all supported release branches**](https://k8s.io/releases/patch-releases), please leave a comment describing why other cherry-picks are not needed to speed up the review process.
+
+    If you're not sure is it required to cherry-pick this change to all supported release branches, please consult the [cherry-pick guidelines](https://git.k8s.io/community/contributors/devel/sig-release/cherry-picks.md) document.
 
     **AFTER** it has been approved by code owners, please leave the following comment on a line **by itself, with no leading whitespace**: **/cc kubernetes/release-managers**
 
@@ -1067,6 +1170,10 @@ plugins:
     - release-note
     - require-matching-label
 
+  kubernetes/cloud-provider-gcp:
+    plugins:
+    - require-matching-label
+
   kubernetes/cloud-provider-openstack:
     plugins:
     - override
@@ -1097,6 +1204,7 @@ plugins:
 
   kubernetes/k8s.io:
     plugins:
+    - blockade
     - milestone
     - override
 
@@ -1108,7 +1216,9 @@ plugins:
 
   kubernetes/kubeadm:
     plugins:
+    - mergecommitblocker
     - milestone
+    - override
 
   kubernetes/kubectl:
     plugins:
@@ -1302,6 +1412,22 @@ plugins:
     plugins:
     - override
 
+  kubernetes-sigs/kwok:
+    plugins:
+    - milestone
+    - release-note
+    - override
+
+  kubernetes-sigs/kubectl-validate:
+    plugins:
+    - mergecommitblocker
+
+  kubernetes-sigs/kueue:
+    plugins:
+    - milestone
+    - milestonestatus
+    - release-note
+
   kubernetes-sigs/kustomize:
     plugins:
     - require-matching-label
@@ -1315,6 +1441,10 @@ plugins:
     plugins:
     - milestone
     - override
+    - require-matching-label
+
+  kubernetes-sigs/cluster-api-operator:
+    plugins:
     - require-matching-label
 
   kubernetes-sigs/cluster-api-provider-aws:
@@ -1364,6 +1494,12 @@ plugins:
     - milestone
     - override
 
+  kubernetes-sigs/gateway-api:
+    plugins:
+    - milestone
+    - milestonestatus
+    - release-note
+
   kubernetes-sigs/image-builder:
     plugins:
     - mergecommitblocker
@@ -1399,6 +1535,8 @@ plugins:
 
   kubernetes-sigs/node-feature-discovery:
     plugins:
+    - milestone
+    - milestonestatus
     - override
 
   kubernetes-sigs/node-feature-discovery-operator:
@@ -1425,6 +1563,17 @@ plugins:
     - lifecycle
     - size
     - trigger
+
+  etcd-io:
+    plugins:
+    - assign
+    - trigger
+    - label
+    - pony
+    - retitle
+    - skip
+    - wip
+    - yuks
 
   containerd/containerd:
     plugins:
@@ -1497,6 +1646,24 @@ external_plugins:
     events:
       - issue_comment
       - pull_request
+  kubernetes/ingress-nginx:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes/cloud-provider-openstack:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes/cloud-provider-vsphere:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
   kubernetes-sigs:
   - name: needs-rebase
     events:
@@ -1513,6 +1680,24 @@ external_plugins:
       - issue_comment
       - pull_request
   kubernetes-sigs/cloud-provider-azure:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-sigs/azuredisk-csi-driver:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-sigs/azurefile-csi-driver:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-sigs/blob-csi-driver:
   - name: cherrypicker
     events:
     - issue_comment
@@ -1560,6 +1745,12 @@ external_plugins:
     - issue_comment
     - pull_request
     endpoint: http://cherrypicker
+  kubernetes-sigs/cluster-api-operator:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
   kubernetes-sigs/cluster-api-provider-vsphere:
   - name: cherrypicker
     events:
@@ -1578,11 +1769,35 @@ external_plugins:
     - issue_comment
     - pull_request
     endpoint: http://cherrypicker
+  kubernetes-sigs/gateway-api:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
   kubernetes-sigs/ibm-powervs-block-csi-driver:
   - name: cherrypicker
     events:
       - issue_comment
       - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-sigs/gcp-compute-persistent-disk-csi-driver:
+  - name: cherrypicker
+    events:
+      - issue_comment
+      - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-sigs/gcp-filestore-csi-driver:
+  - name: cherrypicker
+    events:
+      - issue_comment
+      - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-sigs/kueue:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
     endpoint: http://cherrypicker
   kubernetes-sigs/node-feature-discovery:
   - name: cherrypicker
@@ -1597,6 +1812,60 @@ external_plugins:
     - pull_request
     endpoint: http://cherrypicker
   kubernetes-sigs/secrets-store-csi-driver:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-csi/external-snapshotter:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-csi/external-provisioner:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-csi/external-attacher:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-csi/external-resizer:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-csi/node-driver-registrar:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-csi/livenessprobe:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-csi/csi-driver-smb:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-csi/csi-driver-nfs:
+  - name: cherrypicker
+    events:
+    - issue_comment
+    - pull_request
+    endpoint: http://cherrypicker
+  kubernetes-sigs/kwok:
   - name: cherrypicker
     events:
     - issue_comment

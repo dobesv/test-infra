@@ -102,6 +102,9 @@ var remoteFiles = map[string]map[string]string{
 	"dir/subdir/fejtaverse/sig-bar/removed.yaml": {
 		defaultBranch: "old-removed-config",
 	},
+	"dir/subdir/even.yaml": {
+		"12345": "even SHA256",
+	},
 }
 
 func setupLocalGitRepo(clients localgit.Clients, t *testing.T, org, repo string) git.ClientFactory {
@@ -137,10 +140,6 @@ func setupLocalGitRepo(clients localgit.Clients, t *testing.T, org, repo string)
 		t.Fatalf("Checkout new branch: %v", err)
 	}
 	return c
-}
-
-func TestUpdateConfig(t *testing.T) {
-	testUpdateConfig(localgit.New, t)
 }
 
 func TestUpdateConfigV2(t *testing.T) {
@@ -1435,6 +1434,67 @@ func testUpdateConfig(clients localgit.Clients, t *testing.T) {
 				},
 			},
 		},
+		{
+			name:        "Partitioned ConfigMaps actually partition",
+			prAction:    github.PullRequestActionClosed,
+			merged:      true,
+			mergeCommit: "12345",
+			changes: []github.PullRequestChange{
+				{
+					Filename:  "dir/subdir/fejta.yaml",
+					Status:    "added",
+					Additions: 1,
+				},
+				{
+					Filename:  "dir/subdir/fejtaverse/sig-foo/added.yaml",
+					Status:    "added",
+					Additions: 1,
+				},
+				{
+					Filename:  "dir/subdir/even.yaml",
+					Status:    "added",
+					Additions: 1,
+				},
+			},
+			expectedConfigMaps: []*coreapi.ConfigMap{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job-config-part-1",
+						Namespace: defaultNamespace,
+						Labels: map[string]string{
+							"app.kubernetes.io/name":      "prow",
+							"app.kubernetes.io/component": "updateconfig-plugin",
+						},
+					},
+					Data: map[string]string{
+						"even.yaml": "even SHA256",
+						"VERSION":   "12345",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job-config-part-2",
+						Namespace: defaultNamespace,
+						Labels: map[string]string{
+							"app.kubernetes.io/name":      "prow",
+							"app.kubernetes.io/component": "updateconfig-plugin",
+						},
+					},
+					Data: map[string]string{
+						"fejta.yaml": "new-fejta-config",
+						"added.yaml": "new-added-config",
+						"VERSION":    "12345",
+					},
+				},
+			},
+			config: &plugins.ConfigUpdater{
+				Maps: map[string]plugins.ConfigMapSpec{
+					"dir/**/*.yaml": {
+						PartitionedNames: []string{"job-config-part-1", "job-config-part-2"},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testcases {
@@ -1497,7 +1557,7 @@ func testUpdateConfig(clients localgit.Clients, t *testing.T) {
 			continue
 		}
 
-		modifiedConfigMaps := sets.NewString()
+		modifiedConfigMaps := sets.New[string]()
 		for _, action := range fkc.Fake.Actions() {
 			var obj runtime.Object
 			switch action := action.(type) {
@@ -1535,15 +1595,15 @@ func testUpdateConfig(clients localgit.Clients, t *testing.T) {
 			}
 		}
 
-		expectedConfigMaps := sets.NewString()
+		expectedConfigMaps := sets.New[string]()
 		for _, configMap := range tc.expectedConfigMaps {
 			expectedConfigMaps.Insert(configMap.Name)
 		}
 		if missing := expectedConfigMaps.Difference(modifiedConfigMaps); missing.Len() > 0 {
-			t.Errorf("%s: did not update expected configmaps: %v", tc.name, missing.List())
+			t.Errorf("%s: did not update expected configmaps: %v", tc.name, sets.List(missing))
 		}
 		if extra := modifiedConfigMaps.Difference(expectedConfigMaps); extra.Len() > 0 {
-			t.Errorf("%s: found unexpectedly updated configmaps: %v", tc.name, extra.List())
+			t.Errorf("%s: found unexpectedly updated configmaps: %v", tc.name, sets.List(extra))
 		}
 
 		for _, expected := range tc.expectedConfigMaps {
@@ -1646,10 +1706,6 @@ func TestHandleDefaultNamespace(t *testing.T) {
 			t.Errorf("%s: incorrect changes: %v", tc.name, diff.ObjectReflectDiff(tc.expected, actual))
 		}
 	}
-}
-
-func TestUpdate(t *testing.T) {
-	testUpdate(localgit.New, t)
 }
 
 func TestUpdateV2(t *testing.T) {
@@ -1808,7 +1864,7 @@ func testUpdate(clients localgit.Clients, t *testing.T) {
 			continue
 		}
 
-		modifiedConfigMaps := sets.NewString()
+		modifiedConfigMaps := sets.New[string]()
 		for _, action := range fkc.Fake.Actions() {
 			var obj runtime.Object
 			switch action := action.(type) {
@@ -1915,7 +1971,8 @@ func TestUpdateSize(t *testing.T) {
 			expected: 166,
 		},
 	}
-	for _, tc := range testCases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			client, err := GetConfigMapClient(fake.NewSimpleClientset().CoreV1(), ns, nil, kube.DefaultClusterAlias)

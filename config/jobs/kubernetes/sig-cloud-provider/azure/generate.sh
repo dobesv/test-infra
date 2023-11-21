@@ -38,30 +38,27 @@ EOF
 }
 
 # we need to define the full image URL so it can be autobumped
-tmp="gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master"
+tmp="gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master"
 kubekins_e2e_image="${tmp/\-master/}"
-installCSIdrivers=""
-installCSIAzureFileDrivers=""
+installCSIdrivers=" ./deploy/install-driver.sh master local,snapshot,enable-avset &&"
+installCSIAzureFileDrivers=" ./deploy/install-driver.sh master local &&"
 
 for release in "$@"; do
   output="${dir}/release-${release}.yaml"
   kubernetes_version="latest"
-  capz_release="release-1.7"
+  capz_release="release-1.11"
 
   if [[ "${release}" == "master" ]]; then
     branch=$(echo -e 'master # TODO(releng): Remove once repo default branch has been renamed\n      - main')
     branch_name="master"
+    ccm_branch="master"
     capz_periodic_branch_name="main"
   else
     branch="release-${release}"
     branch_name="release-${release}"
     kubernetes_version+="-${release}"
+    ccm_branch="release-${release}"
     capz_periodic_branch_name=${capz_release}
-  fi
-
-  if [[ "${release}" == "master" || "${release}" == "1.23" ]]; then
-    installCSIdrivers=" ./deploy/install-driver.sh master local,snapshot,enable-avset &&"
-    installCSIAzureFileDrivers=" ./deploy/install-driver.sh master local &&"
   fi
 
   cat >"${output}" <<EOF
@@ -81,6 +78,7 @@ presubmits:
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
       preset-azure-anonymous-pull: "true"
+      preset-azure-capz-sa-cred: "true"
     extra_refs:
       - org: kubernetes-sigs
         repo: cluster-api-provider-azure
@@ -91,6 +89,10 @@ presubmits:
         repo: azuredisk-csi-driver
         base_ref: master
         path_alias: sigs.k8s.io/azuredisk-csi-driver
+      - org: kubernetes-sigs
+        repo: cloud-provider-azure
+        base_ref: ${ccm_branch}
+        path_alias: sigs.k8s.io/cloud-provider-azure
     spec:
       containers:
         - image: ${kubekins_e2e_image}-master
@@ -126,6 +128,7 @@ $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-azure-d
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
       preset-azure-anonymous-pull: "true"
+      preset-azure-capz-sa-cred: "true"
     extra_refs:
       - org: kubernetes-sigs
         repo: cluster-api-provider-azure
@@ -136,6 +139,10 @@ $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-azure-d
         repo: azuredisk-csi-driver
         base_ref: master
         path_alias: sigs.k8s.io/azuredisk-csi-driver
+      - org: kubernetes-sigs
+        repo: cloud-provider-azure
+        base_ref: ${ccm_branch}
+        path_alias: sigs.k8s.io/cloud-provider-azure
     spec:
       containers:
         - image: ${kubekins_e2e_image}-master
@@ -173,6 +180,7 @@ $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-azure-d
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
       preset-azure-anonymous-pull: "true"
+      preset-azure-capz-sa-cred: "true"
     extra_refs:
       - org: kubernetes-sigs
         repo: cluster-api-provider-azure
@@ -183,6 +191,10 @@ $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-azure-d
         repo: azurefile-csi-driver
         base_ref: master
         path_alias: sigs.k8s.io/azurefile-csi-driver
+      - org: kubernetes-sigs
+        repo: cloud-provider-azure
+        base_ref: ${ccm_branch}
+        path_alias: sigs.k8s.io/cloud-provider-azure
     spec:
       containers:
         - image: ${kubekins_e2e_image}-master
@@ -219,6 +231,7 @@ $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-azure-f
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
       preset-azure-anonymous-pull: "true"
+      preset-azure-capz-sa-cred: "true"
     extra_refs:
       - org: kubernetes-sigs
         repo: cluster-api-provider-azure
@@ -229,6 +242,10 @@ $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-azure-f
         repo: azurefile-csi-driver
         base_ref: master
         path_alias: sigs.k8s.io/azurefile-csi-driver
+      - org: kubernetes-sigs
+        repo: cloud-provider-azure
+        base_ref: ${ccm_branch}
+        path_alias: sigs.k8s.io/cloud-provider-azure
     spec:
       containers:
         - image: ${kubekins_e2e_image}-master
@@ -267,12 +284,17 @@ $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-azure-f
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
       preset-azure-anonymous-pull: "true"
+      preset-azure-capz-sa-cred: "true"
     extra_refs:
     - org: kubernetes-sigs
       repo: cluster-api-provider-azure
       base_ref: ${capz_release}
       path_alias: sigs.k8s.io/cluster-api-provider-azure
       workdir: true
+    - org: kubernetes-sigs
+      repo: cloud-provider-azure
+      base_ref: ${ccm_branch}
+      path_alias: sigs.k8s.io/cloud-provider-azure
     spec:
       containers:
       - image: ${kubekins_e2e_image}-master
@@ -291,46 +313,6 @@ $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-azure-f
         - name: CONFORMANCE_NODES
           value: "25"
 $(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-conformance)
-  - name: pull-kubernetes-e2e-capz-ha-control-plane
-    decorate: true
-    decoration_config:
-      timeout: 4h
-    always_run: false
-    optional: true
-    path_alias: k8s.io/kubernetes
-    branches:
-      - ${branch}
-    labels:
-      preset-dind-enabled: "true"
-      preset-kind-volume-mounts: "true"
-      preset-azure-cred-only: "true"
-      preset-azure-anonymous-pull: "true"
-    extra_refs:
-    - org: jackfrancis #TODO change back to kubernetes-sigs
-      repo: cluster-api-provider-azure
-      base_ref: capz-ha-control-plane-tests #TODO change back to main
-      path_alias: sigs.k8s.io/cluster-api-provider-azure
-      workdir: true
-    spec:
-      containers:
-      - image: ${kubekins_e2e_image}-master
-        command:
-        - runner.sh
-        - ./scripts/ci-conformance.sh
-        securityContext:
-          privileged: true
-        resources:
-          requests:
-            cpu: 1
-            memory: "4Gi"
-        env:
-        - name: KUBETEST_CONF_PATH
-          value: /home/prow/go/src/sigs.k8s.io/cluster-api-provider-azure/test/e2e/data/kubetest/conformance.yaml
-        - name: CONFORMANCE_NODES
-          value: "1"
-        - name: CONFORMANCE_CONTROL_PLANE_MACHINE_COUNT
-          value: "3"
-$(generate_presubmit_annotations ${branch_name} pull-kubernetes-e2e-capz-ha-control-plane)
 periodics:
 - interval: 3h
   name: capz-conformance-${release/./-}
@@ -341,11 +323,19 @@ periodics:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
     preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
     base_ref: ${capz_periodic_branch_name}
     path_alias: sigs.k8s.io/cluster-api-provider-azure
+    workdir: true
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
     - image: ${kubekins_e2e_image}-master
@@ -372,6 +362,104 @@ periodics:
     testgrid-num-columns-recent: '30'
 
 - interval: 24h
+  name: capz-conformance-ipv6-${release/./-}
+  decorate: true
+  decoration_config:
+    timeout: 3h
+  labels:
+    preset-dind-enabled: "true"
+    preset-kind-volume-mounts: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
+  extra_refs:
+  - org: kubernetes-sigs
+    repo: cluster-api-provider-azure
+    base_ref: main # TODO: switch back to capz_periodic_branch_name once capz release-1.12 exists
+    path_alias: sigs.k8s.io/cluster-api-provider-azure
+    workdir: true
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
+  spec:
+    containers:
+    - image: ${kubekins_e2e_image}-master
+      command:
+      - runner.sh
+      - ./scripts/ci-conformance.sh
+      env:
+      - name: E2E_ARGS
+        value: "-kubetest.use-ci-artifacts"
+      - name: KUBERNETES_VERSION
+        value: "${kubernetes_version}"
+      - name: CONFORMANCE_WORKER_MACHINE_COUNT
+        value: "2"
+      - name: IP_FAMILY
+        value: "IPv6"
+      securityContext:
+        privileged: true
+      resources:
+        requests:
+          cpu: 1
+          memory: "4Gi"
+  annotations:
+    testgrid-dashboards: provider-azure-${release}-signal
+    testgrid-tab-name: capz-conformance-ipv6
+    testgrid-alert-email: kubernetes-provider-azure@googlegroups.com
+    testgrid-num-columns-recent: '30'
+
+- interval: 24h
+  name: capz-conformance-dual-stack-${release/./-}
+  decorate: true
+  decoration_config:
+    timeout: 3h
+  labels:
+    preset-dind-enabled: "true"
+    preset-kind-volume-mounts: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
+  extra_refs:
+  - org: kubernetes-sigs
+    repo: cluster-api-provider-azure
+    base_ref: main # TODO: switch back to capz_periodic_branch_name once capz release-1.12 exists
+    path_alias: sigs.k8s.io/cluster-api-provider-azure
+    workdir: true
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
+  spec:
+    containers:
+    - image: ${kubekins_e2e_image}-master
+      command:
+      - runner.sh
+      - ./scripts/ci-conformance.sh
+      env:
+      - name: E2E_ARGS
+        value: "-kubetest.use-ci-artifacts"
+      - name: KUBERNETES_VERSION
+        value: "${kubernetes_version}"
+      - name: CONFORMANCE_WORKER_MACHINE_COUNT
+        value: "2"
+      - name: IP_FAMILY
+        value: "dual"
+      securityContext:
+        privileged: true
+      resources:
+        requests:
+          cpu: 1
+          memory: "4Gi"
+  annotations:
+    testgrid-dashboards: provider-azure-${release}-signal
+    testgrid-tab-name: capz-conformance-dual-stack
+    testgrid-alert-email: kubernetes-provider-azure@googlegroups.com
+    testgrid-num-columns-recent: '30'
+
+- interval: 24h
   name: capz-azure-file-${release/./-}
   decorate: true
   decoration_config:
@@ -379,7 +467,9 @@ periodics:
   labels:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
-    preset-azure-cred: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
@@ -393,6 +483,11 @@ periodics:
     repo: kubernetes
     base_ref: ${branch_name}
     path_alias: k8s.io/kubernetes
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
     - image: ${kubekins_e2e_image}-master
@@ -431,7 +526,9 @@ periodics:
   labels:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
-    preset-azure-cred: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
@@ -445,6 +542,11 @@ periodics:
     repo: kubernetes
     base_ref: ${branch_name}
     path_alias: k8s.io/kubernetes
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
     - image: ${kubekins_e2e_image}-master
@@ -485,7 +587,9 @@ periodics:
   labels:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
-    preset-azure-cred: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
@@ -499,6 +603,11 @@ periodics:
     repo: kubernetes
     base_ref: ${branch_name}
     path_alias: k8s.io/kubernetes
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
     - image: ${kubekins_e2e_image}-master
@@ -536,7 +645,9 @@ periodics:
   labels:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
-    preset-azure-cred: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
@@ -550,6 +661,11 @@ periodics:
     repo: kubernetes
     base_ref: ${branch_name}
     path_alias: k8s.io/kubernetes
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
     - image: ${kubekins_e2e_image}-master
@@ -593,14 +709,22 @@ EOF
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
     preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
     base_ref: ${capz_release}
     path_alias: sigs.k8s.io/cluster-api-provider-azure
+    workdir: true
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: ${kubekins_e2e_image}-master
       command:
       - runner.sh
       - ./scripts/ci-conformance.sh
@@ -631,7 +755,9 @@ EOF
   labels:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
-    preset-azure-cred: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
@@ -645,9 +771,14 @@ EOF
     repo: kubernetes
     base_ref: master
     path_alias: k8s.io/kubernetes
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       - ./scripts/ci-entrypoint.sh
@@ -683,7 +814,9 @@ EOF
   labels:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
-    preset-azure-cred: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
@@ -697,9 +830,14 @@ EOF
     repo: kubernetes
     base_ref: master
     path_alias: k8s.io/kubernetes
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       - ./scripts/ci-entrypoint.sh
@@ -737,7 +875,9 @@ EOF
   labels:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
-    preset-azure-cred: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
@@ -751,9 +891,14 @@ EOF
     repo: kubernetes
     base_ref: master
     path_alias: k8s.io/kubernetes
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       - ./scripts/ci-entrypoint.sh
@@ -788,7 +933,9 @@ EOF
   labels:
     preset-dind-enabled: "true"
     preset-kind-volume-mounts: "true"
-    preset-azure-cred: "true"
+    preset-azure-cred-only: "true"
+    preset-azure-anonymous-pull: "true"
+    preset-azure-capz-sa-cred: "true"
   extra_refs:
   - org: kubernetes-sigs
     repo: cluster-api-provider-azure
@@ -802,9 +949,14 @@ EOF
     repo: kubernetes
     base_ref: master
     path_alias: k8s.io/kubernetes
+  - org: kubernetes-sigs
+    repo: cloud-provider-azure
+    base_ref: ${ccm_branch}
+    path_alias: sigs.k8s.io/cloud-provider-azure
+    workdir: false
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       - ./scripts/ci-entrypoint.sh

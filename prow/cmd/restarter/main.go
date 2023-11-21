@@ -257,7 +257,7 @@ func (c *controller) run() {
 
 		c.logger.WithFields(pjutil.ProwJobFields(&prowJob)).WithField("statusDescription", prowJob.Status.Description).WithField("prevRestarts", prevRestartsStr).Debug("Checking prowjob.")
 
-		wantToRestart := (prowJob.Status.State == prowv1.FailureState && prowJob.Status.Description == "Pod got deleted unexpectedly") ||
+		wantToRestart := ((prowJob.Status.State == prowv1.FailureState || prowJob.Status.State == prowv1.ErrorState) && prowJob.Status.Description == "Pod got deleted unexpectedly") ||
 			(prowJob.Status.State == prowv1.ErrorState && prowJob.Status.Description == "Pod scheduling timeout.")
 
 		if !wantToRestart {

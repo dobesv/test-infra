@@ -38,6 +38,7 @@ type fghc struct {
 	pr       *github.PullRequest
 	isMember bool
 
+	diff       []byte
 	patch      []byte
 	comments   []string
 	prs        []github.PullRequest
@@ -78,6 +79,12 @@ func (f *fghc) GetPullRequest(org, repo string, number int) (*github.PullRequest
 	f.Lock()
 	defer f.Unlock()
 	return f.pr, nil
+}
+
+func (f *fghc) GetPullRequestDiff(org, repo string, number int) ([]byte, error) {
+	f.Lock()
+	defer f.Unlock()
+	return f.diff, nil
 }
 
 func (f *fghc) GetPullRequestPatch(org, repo string, number int) ([]byte, error) {
@@ -256,11 +263,6 @@ func makeFakeRepoWithCommit(clients localgit.Clients, t *testing.T) (*localgit.L
 	return lg, c
 }
 
-func TestCherryPickIC(t *testing.T) {
-	t.Parallel()
-	testCherryPickIC(localgit.New, t)
-}
-
 func TestCherryPickICV2(t *testing.T) {
 	t.Parallel()
 	testCherryPickIC(localgit.NewV2, t)
@@ -337,11 +339,6 @@ func testCherryPickIC(clients localgit.Clients, t *testing.T) {
 	if got != expected {
 		t.Errorf("Expected (%d):\n%s\nGot (%d):\n%+v\n", len(expected), expected, len(got), got)
 	}
-}
-
-func TestCherryPickPR(t *testing.T) {
-	t.Parallel()
-	testCherryPickPR(localgit.New, t)
 }
 
 func TestCherryPickPRV2(t *testing.T) {
@@ -494,11 +491,6 @@ func testCherryPickPR(clients localgit.Clients, t *testing.T) {
 	}
 }
 
-func TestCherryPickOfCherryPickPR(t *testing.T) {
-	t.Parallel()
-	testCherryPickOfCherryPickPR(localgit.New, t)
-}
-
 func TestCherryPickOfCherryPickPRV2(t *testing.T) {
 	t.Parallel()
 	testCherryPickOfCherryPickPR(localgit.NewV2, t)
@@ -621,11 +613,6 @@ func testCherryPickOfCherryPickPR(clients localgit.Clients, t *testing.T) {
 	if len(seenBranches) != len(expectedBranches) {
 		t.Fatalf("Expected to see PRs for %d branches, got %d (%v)", len(expectedBranches), len(seenBranches), seenBranches)
 	}
-}
-
-func TestCherryPickPRWithLabels(t *testing.T) {
-	t.Parallel()
-	testCherryPickPRWithLabels(localgit.New, t)
 }
 
 func TestCherryPickPRWithLabelsV2(t *testing.T) {
@@ -904,11 +891,6 @@ func TestCherryPickCreateIssue(t *testing.T) {
 		}
 
 	}
-}
-
-func TestCherryPickPRAssignments(t *testing.T) {
-	t.Parallel()
-	testCherryPickPRAssignments(localgit.New, t)
 }
 
 func TestCherryPickPRAssignmentsV2(t *testing.T) {

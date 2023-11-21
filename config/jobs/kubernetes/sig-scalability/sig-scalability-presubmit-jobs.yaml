@@ -4,7 +4,7 @@ presubmits:
   # Some elements (like access tokens) are removed to speed up testing.
   - name: pull-kubernetes-e2e-gce-100-performance
     cluster: k8s-infra-prow-build
-    always_run: true
+    always_run: false
     skip_report: false
     max_concurrency: 12
     skip_branches:
@@ -34,7 +34,7 @@ presubmits:
       testgrid-tab-name: pull-kubernetes-e2e-gce-100-performance
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -118,7 +118,7 @@ presubmits:
       testgrid-tab-name: pull-kubernetes-e2e-gce-big-performance
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -185,7 +185,7 @@ presubmits:
       testgrid-tab-name: pull-kubernetes-e2e-gce-correctness
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -251,7 +251,7 @@ presubmits:
       testgrid-tab-name: pull-kubernetes-e2e-gce-large-performance
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -273,15 +273,16 @@ presubmits:
         - --env=CL2_LOAD_TEST_THROUGHPUT=50
         - --env=CL2_DELETE_TEST_THROUGHPUT=50
         - --env=CL2_RATE_LIMIT_POD_CREATION=false
+        - --env=KUBE_CONTROLLER_MANAGER_TEST_ARGS=--endpointslice-updates-batch-period=500ms --endpoint-updates-batch-period=500ms
         # Overrides CONTROLLER_MANAGER_TEST_ARGS from preset-e2e-scalability-periodics.
-        - --env=CONTROLLER_MANAGER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=100 --kube-api-burst=100 --endpointslice-updates-batch-period=500ms --endpoint-updates-batch-period=500ms
+        - --env=CONTROLLER_MANAGER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=100 --kube-api-burst=100
         # Overrides SCHEDULER_TEST_ARGS from preset-e2e-scalability-periodics.
         # TODO(#1311): Clean this up after the experiment - it should allow
         #   to hugely decrease pod-startup-latency across the whole test.
         #   Given that individual controllers have separate QPS limits, we allow
         #   scheduler to keep up with the load from deployment, daemonset and job
         #   performing pod creations at once.
-        - --env=SCHEDULER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=300 --kube-api-burst=300
+        - --env=SCHEDULER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=500 --kube-api-burst=500
         # With APF only sum of --max-requests-inflight and --max-mutating-requests-inflight matters, so set --max-mutating-requests-inflight to 0.
         - --env=APISERVER_TEST_ARGS=--max-requests-inflight=640 --max-mutating-requests-inflight=0 --profiling --contention-profiling
         - --env=CL2_ENABLE_API_AVAILABILITY_MEASUREMENT=true
@@ -350,7 +351,7 @@ presubmits:
       testgrid-tab-name: pull-kubernetes-kubemark-e2e-gce-big
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -439,7 +440,7 @@ presubmits:
       testgrid-tab-name: pull-kubernetes-kubemark-e2e-gce-scale
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -515,7 +516,7 @@ presubmits:
     run_if_changed: ^dns/.*$
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -561,7 +562,7 @@ presubmits:
     run_if_changed: ^clusterloader2/.*$
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -632,7 +633,7 @@ presubmits:
     run_if_changed: ^clusterloader2/.*$
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -705,7 +706,7 @@ presubmits:
       testgrid-tab-name: pull-perf-tests-clusterloader2-e2e-gce-scale-performance
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         - /workspace/scenarios/kubernetes_e2e.py
@@ -725,15 +726,16 @@ presubmits:
         - --env=CL2_LOAD_TEST_THROUGHPUT=50
         - --env=CL2_DELETE_TEST_THROUGHPUT=50
         - --env=CL2_RATE_LIMIT_POD_CREATION=false
+        - --env=KUBE_CONTROLLER_MANAGER_TEST_ARGS=--endpointslice-updates-batch-period=500ms --endpoint-updates-batch-period=500ms
         # Overrides CONTROLLER_MANAGER_TEST_ARGS from preset-e2e-scalability-periodics.
-        - --env=CONTROLLER_MANAGER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=100 --kube-api-burst=100 --endpointslice-updates-batch-period=500ms --endpoint-updates-batch-period=500ms
+        - --env=CONTROLLER_MANAGER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=100 --kube-api-burst=100
         # Overrides SCHEDULER_TEST_ARGS from preset-e2e-scalability-periodics.
         # TODO(#1311): Clean this up after the experiment - it should allow
         #   to hugely decrease pod-startup-latency across the whole test.
         #   Given that individual controllers have separate QPS limits, we allow
         #   scheduler to keep up with the load from deployment, daemonset and job
         #   performing pod creations at once.
-        - --env=SCHEDULER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=300 --kube-api-burst=300
+        - --env=SCHEDULER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=500 --kube-api-burst=500
         # With APF only sum of --max-requests-inflight and --max-mutating-requests-inflight matters, so set --max-mutating-requests-inflight to 0.
         - --env=APISERVER_TEST_ARGS=--max-requests-inflight=640 --max-mutating-requests-inflight=0 --profiling --contention-profiling
         - --env=CL2_ENABLE_API_AVAILABILITY_MEASUREMENT=true
@@ -788,7 +790,7 @@ presubmits:
       testgrid-tab-name: pull-perf-tests-util-images
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/bootstrap:v20230206-22f4807bdc
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         args:
@@ -796,32 +798,6 @@ presubmits:
         # docker-in-docker needs privileged mode
         securityContext:
           privileged: true
-        resources:
-          requests:
-            cpu: 1
-            memory: "2Gi"
-          limits:
-            cpu: 1
-            memory: "2Gi"
-
-  # TODO(jprzychodzen): Remove after deprecation of release-1.19
-  - name: pull-perf-tests-verify-all
-    decorate: true
-    always_run: true
-    skip_branches:
-    - release-1.1[2-8] # Presubmit has been implemented for 1.19+ releases
-    - master # It's covered by 'pull-perf-tests-verify-all-python' and 'pull-perf-tests-verify-test'
-    path_alias: "k8s.io/perf-tests"
-    annotations:
-      testgrid-dashboards: presubmits-kubernetes-scalability
-      testgrid-tab-name: pull-perf-tests-verify-all
-    spec:
-      containers:
-      - image: golang:1.13
-        command:
-        - make
-        args:
-        - verify-all
         resources:
           requests:
             cpu: 1
@@ -865,7 +841,7 @@ presubmits:
       testgrid-tab-name: pull-perf-tests-verify-test
     spec:
       containers:
-      - image: golang:1.18
+      - image: public.ecr.aws/docker/library/golang:1.20
         command:
         - verify/test.sh
         resources:
@@ -911,7 +887,7 @@ presubmits:
       testgrid-tab-name: pull-perf-tests-verify-lint
     spec:
       containers:
-      - image: golangci/golangci-lint:v1.47.3
+      - image: golangci/golangci-lint:v1.51.2
         command:
         - make
         args:

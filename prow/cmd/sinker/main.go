@@ -108,6 +108,7 @@ func main() {
 		logrus.WithError(err).Fatal("Error starting config agent.")
 	}
 	cfg := configAgent.Config
+	o.kubernetes.SetDisabledClusters(sets.New[string](cfg().DisabledClusters...))
 
 	metrics.ExposeMetrics("sinker", cfg().PushGateway, o.instrumentationOptions.MetricsPort)
 
@@ -140,13 +141,29 @@ func main() {
 		logrus.WithError(err).Fatal("Error creating manager")
 	}
 
+	// The watch apimachinery doesn't support restarts, so just exit the
+	// binary if a build cluster can be connected later.
+	callBack := func() {
+		logrus.Info("Build cluster that failed to connect initially now worked, exiting to trigger a restart.")
+		interrupts.Terminate()
+	}
+
+	// We require operating on test pods in build clusters with the following
+	// verbs. This is used during startup to check that we have the necessary
+	// authorizations on build clusters.
+	requiredTestPodVerbs := []string{
+		"delete",
+		"list",
+		"watch",
+		"get",
+		"patch",
+	}
+
 	buildManagers, err := o.kubernetes.BuildClusterManagers(o.dryRun,
+		requiredTestPodVerbs,
 		// The watch apimachinery doesn't support restarts, so just exit the
 		// binary if a build cluster can be connected later .
-		func() {
-			logrus.Info("Build cluster that failed to connect initially now worked, exiting to trigger a restart.")
-			interrupts.Terminate()
-		},
+		callBack,
 		func(o *manager.Options) {
 			o.Namespace = cfg().PodNamespace
 		},
@@ -310,7 +327,7 @@ func (c *controller) clean() {
 
 	// Only delete pod if its prowjob is marked as finished
 	pjMap := map[string]*prowapi.ProwJob{}
-	isFinished := sets.NewString()
+	isFinished := sets.New[string]()
 
 	maxProwJobAge := c.config().Sinker.MaxProwJobAge.Duration
 	for i, prowJob := range prowJobs.Items {
@@ -350,15 +367,15 @@ func (c *controller) clean() {
 			continue
 		}
 
+		if !prowJob.Complete() {
+			continue
+		}
+		isFinished.Insert(prowJob.ObjectMeta.Name)
 		latestPJ := latestPeriodics[prowJob.Spec.Job]
 		if isActivePeriodic[prowJob.Spec.Job] && prowJob.ObjectMeta.Name == latestPJ.ObjectMeta.Name {
 			// Ignore deleting this one.
 			continue
 		}
-		if !prowJob.Complete() {
-			continue
-		}
-		isFinished.Insert(prowJob.ObjectMeta.Name)
 		if time.Since(prowJob.Status.StartTime.Time) <= maxProwJobAge {
 			continue
 		}
@@ -468,7 +485,7 @@ func (c *controller) clean() {
 func (c *controller) cleanupKubernetesFinalizer(pod *corev1api.Pod, client ctrlruntimeclient.Client) error {
 
 	oldPod := pod.DeepCopy()
-	pod.Finalizers = sets.NewString(pod.Finalizers...).Delete(kubernetesreporterapi.FinalizerName).List()
+	pod.Finalizers = sets.List(sets.New[string](pod.Finalizers...).Delete(kubernetesreporterapi.FinalizerName))
 
 	if err := client.Patch(c.ctx, pod, ctrlruntimeclient.MergeFrom(oldPod)); err != nil {
 		return fmt.Errorf("failed to patch pod: %w", err)
@@ -519,7 +536,7 @@ func podNeedsKubernetesFinalizerCleanup(log *logrus.Entry, pj *prowapi.ProwJob, 
 		return true
 	}
 	// This is always a bug
-	if pj.Complete() && pj.Status.PrevReportStates[kubernetesreporterapi.ReporterName] == pj.Status.State && sets.NewString(pod.Finalizers...).Has(kubernetesreporterapi.FinalizerName) {
+	if pj.Complete() && pj.Status.PrevReportStates[kubernetesreporterapi.ReporterName] == pj.Status.State && sets.New[string](pod.Finalizers...).Has(kubernetesreporterapi.FinalizerName) {
 		log.WithField("pj", pj.Name).Errorf("BUG: Pod for prowjob still had the %s finalizer after completing and being successfully reported by the %s reporter", kubernetesreporterapi.FinalizerName, kubernetesreporterapi.ReporterName)
 
 		return true

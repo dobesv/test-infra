@@ -1,6 +1,7 @@
 periodics:
 # This is a sig-release-master-blocking job.
-- cron: '1 12 * * *' # Run daily at 4:01PST (12:01 UTC)
+# The frequency was cut to reduce infrastructure costs.
+- cron: '1 17 2-31/2 * *' # Run on even days at 9:01PST (17:01 UTC)
   name: ci-kubernetes-e2e-gce-scale-correctness
   cluster: k8s-infra-prow-build
   labels:
@@ -21,7 +22,7 @@ periodics:
     description: "Uses kubetest to run correctness tests against a 5000-node cluster created with cluster/kube-up.sh"
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       - /workspace/scenarios/kubernetes_e2e.py
@@ -31,8 +32,9 @@ periodics:
       - --env=HEAPSTER_MACHINE_TYPE=e2-standard-32
       - --extract=ci/latest-fast
       - --extract-ci-bucket=k8s-release-dev
+      - --env=KUBE_CONTROLLER_MANAGER_TEST_ARGS=--endpointslice-updates-batch-period=500ms --endpoint-updates-batch-period=500ms
       # Overrides CONTROLLER_MANAGER_TEST_ARGS from preset-e2e-scalability-periodics.
-      - --env=CONTROLLER_MANAGER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=100 --kube-api-burst=100 --endpointslice-updates-batch-period=500ms --endpoint-updates-batch-period=500ms
+      - --env=CONTROLLER_MANAGER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=100 --kube-api-burst=100
       - --gcp-master-image=gci
       - --gcp-node-image=gci
       - --gcp-node-size=e2-small
@@ -55,7 +57,8 @@ periodics:
           memory: "39Gi"
 
 # This is a sig-release-master-blocking job.
-- cron: '1 17 * * *' # Run daily at 9:01PST (17:01 UTC)
+# The frequency was cut to reduce infrastructure costs.
+- cron: '1 17 1-31/2 * *' # Run on odd days at 9:01PST (17:01 UTC)
   name: ci-kubernetes-e2e-gce-scale-performance
   tags:
   - "perfDashPrefix: gce-5000Nodes"
@@ -87,7 +90,7 @@ periodics:
     description: "Uses kubetest to run k8s.io/perf-tests/run-e2e.sh against a 5000-node cluster created with cluster/kube-up.sh"
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       - /workspace/scenarios/kubernetes_e2e.py
@@ -107,15 +110,16 @@ periodics:
       - --env=CL2_LOAD_TEST_THROUGHPUT=50
       - --env=CL2_DELETE_TEST_THROUGHPUT=50
       - --env=CL2_RATE_LIMIT_POD_CREATION=false
+      - --env=KUBE_CONTROLLER_MANAGER_TEST_ARGS=--endpointslice-updates-batch-period=500ms --endpoint-updates-batch-period=500ms
       # Overrides CONTROLLER_MANAGER_TEST_ARGS from preset-e2e-scalability-periodics.
-      - --env=CONTROLLER_MANAGER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=100 --kube-api-burst=100 --endpointslice-updates-batch-period=500ms --endpoint-updates-batch-period=500ms
+      - --env=CONTROLLER_MANAGER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=100 --kube-api-burst=100
       # Overrides SCHEDULER_TEST_ARGS from preset-e2e-scalability-periodics.
       # TODO(#1311): Clean this up after the experiment - it should allow
       #   to hugely decrease pod-startup-latency across the whole test.
       #   Given that individual controllers have separate QPS limits, we allow
       #   scheduler to keep up with the load from deployment, daemonset and job
       #   performing pod creations at once.
-      - --env=SCHEDULER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=300 --kube-api-burst=300
+      - --env=SCHEDULER_TEST_ARGS=--profiling --contention-profiling --kube-api-qps=500 --kube-api-burst=500
       # With APF only sum of --max-requests-inflight and --max-mutating-requests-inflight matters, so set --max-mutating-requests-inflight to 0.
       - --env=APISERVER_TEST_ARGS=--max-requests-inflight=640 --max-mutating-requests-inflight=0
       - --env=CL2_ENABLE_API_AVAILABILITY_MEASUREMENT=true
@@ -175,7 +179,7 @@ periodics:
     path_alias: k8s.io/perf-tests
   annotations:
     fork-per-release: "true"
-    fork-per-release-cron: 0 */6 * * *, 0 0/12 * * *, 0 4-16/12 * * *, 0 8-20/12 * * *
+    fork-per-release-cron: 0 */6 * * *, 0 0/12 * * *, 0 4-16/12 * * *, 0 8-20/12 * * *, 0 8-20/24 * * *
     fork-per-release-deletions: "preset-e2e-scalability-periodics-master"
     fork-per-release-replacements: "--extract=ci/latest-fast -> --extract=ci/latest-{{.Version}}, gce-100Nodes-master -> gce-100Nodes-{{.Version}}"
     testgrid-dashboards: sig-release-master-blocking, sig-scalability-gce, google-gce, google-gci
@@ -185,7 +189,7 @@ periodics:
     testgrid-num-failures-to-alert: '2'
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       - /workspace/scenarios/kubernetes_e2e.py

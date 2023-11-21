@@ -1,6 +1,7 @@
 presubmits:
   kubernetes-sigs/sig-storage-local-static-provisioner:
   - name: pull-sig-storage-local-static-provisioner
+    cluster: eks-prow-build-cluster
     always_run: true
     decorate: true
     path_alias: sigs.k8s.io/sig-storage-local-static-provisioner
@@ -8,7 +9,7 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         args:
@@ -16,19 +17,37 @@ presubmits:
         # docker-in-docker needs privileged mode
         securityContext:
           privileged: true
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
+
   - name: pull-sig-storage-local-static-provisioner-verify
+    cluster: eks-prow-build-cluster
     always_run: true
     decorate: true
     path_alias: sigs.k8s.io/sig-storage-local-static-provisioner
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         args:
         - make
         - verify
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
+
   - name: pull-sig-storage-local-static-provisioner-test
+    cluster: eks-prow-build-cluster
     always_run: true
     decorate: true
     path_alias: sigs.k8s.io/sig-storage-local-static-provisioner
@@ -36,7 +55,7 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         args:
@@ -45,7 +64,16 @@ presubmits:
         # docker-in-docker needs privileged mode
         securityContext:
           privileged: true
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
+
   - name: pull-sig-storage-local-static-provisioner-e2e
+    cluster: k8s-infra-prow-build
     always_run: true
     decorate: true
     path_alias: sigs.k8s.io/sig-storage-local-static-provisioner
@@ -55,7 +83,7 @@ presubmits:
       preset-k8s-ssh: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         args:
@@ -64,7 +92,15 @@ presubmits:
         # docker-in-docker needs privileged mode
         securityContext:
           privileged: true
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
   - name: pull-sig-storage-local-static-provisioner-e2e-windows-2019
+    cluster: k8s-infra-prow-build
     always_run: false
     decorate: true
     path_alias: sigs.k8s.io/sig-storage-local-static-provisioner
@@ -79,7 +115,7 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - runner.sh
         args:
@@ -107,9 +143,17 @@ presubmits:
         # docker-in-docker needs privileged mode
         securityContext:
           privileged: true
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
 
 periodics:
 - name: ci-sig-storage-local-static-provisioner-master-gce-latest
+  cluster: k8s-infra-prow-build
   interval: 4h
   decorate: true
   labels:
@@ -123,7 +167,7 @@ periodics:
     path_alias: sigs.k8s.io/sig-storage-local-static-provisioner
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - runner.sh
       args:
@@ -135,7 +179,14 @@ periodics:
       - name: EXTRACT_STRATEGY
         value: ci/latest
       - NAME: PROVISIONER_E2E_IMAGE
-        value: quay.io/external_storage/local-volume-provisioner:canary
+        value: gcr.io/k8s-staging-sig-storage/local-volume-provisioner:canary
       # docker-in-docker needs privileged mode
       securityContext:
         privileged: true
+      resources:
+        limits:
+          cpu: 2
+          memory: 4Gi
+        requests:
+          cpu: 2
+          memory: 4Gi

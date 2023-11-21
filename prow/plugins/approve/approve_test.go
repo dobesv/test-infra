@@ -120,7 +120,7 @@ func newFakeGitHubClient(hasLabel, humanApproved bool, files []string, comments 
 type fakeRepo struct {
 	approvers map[string]layeredsets.String
 	// directory -> approver
-	leafApprovers map[string]sets.String
+	leafApprovers map[string]sets.Set[string]
 	// toApprove -> directoryWithOwnersFile
 	approverOwners map[string]string
 	// dir -> allowed
@@ -133,10 +133,28 @@ func (fr fakeRepo) Filenames() ownersconfig.Filenames {
 }
 
 func (fr fakeRepo) Approvers(path string) layeredsets.String {
-	return fr.approvers[path]
+	ret := fr.approvers[path]
+	if ret.Len() > 0 || path == "" {
+		return ret
+	}
+
+	p := filepath.Dir(path)
+	if p == "." {
+		p = ""
+	}
+	return fr.Approvers(p)
 }
-func (fr fakeRepo) LeafApprovers(path string) sets.String {
-	return fr.leafApprovers[path]
+func (fr fakeRepo) LeafApprovers(path string) sets.Set[string] {
+	ret := fr.leafApprovers[path]
+	if ret.Len() > 0 || path == "" {
+		return ret
+	}
+
+	p := filepath.Dir(path)
+	if p == "." {
+		p = ""
+	}
+	return fr.LeafApprovers(p)
 }
 func (fr fakeRepo) FindApproverOwnersForFile(path string) string {
 	return fr.approverOwners[path]
@@ -147,7 +165,7 @@ func (fr fakeRepo) IsNoParentOwners(path string) bool {
 func (fr fakeRepo) IsAutoApproveUnownedSubfolders(ownerFilePath string) bool {
 	return fr.autoApproveUnownedSubfolders[ownerFilePath]
 }
-func (fr fakeRepo) TopLevelApprovers() sets.String {
+func (fr fakeRepo) TopLevelApprovers() sets.Set[string] {
 	return nil
 }
 
@@ -265,7 +283,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner). For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -430,7 +448,7 @@ Approvers can cancel approval by writing `+"`/approve cancel`"+` in a comment
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by: *<a href="#" title="Author self-approved">cjwagner</a>*
-**Once this PR has been reviewed and has the lgtm label**, please assign alice for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 *No associated issue*. Update pull-request body to add a reference to an issue, or get approval with ` + "`/approve no-issue`" + `
 
@@ -468,7 +486,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by: *<a href="#" title="Author self-approved">cjwagner</a>*
-**Once this PR has been reviewed and has the lgtm label**, please assign alice for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 *No associated issue*. Update pull-request body to add a reference to an issue, or get approval with ` + "`/approve no-issue`" + `
 
@@ -689,7 +707,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 				newTestComment("k8s-ci-robot", `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please assign alice for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -766,7 +784,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner). For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -835,7 +853,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner). For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -872,7 +890,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner). For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -947,7 +965,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner). For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -984,7 +1002,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner). For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -1018,7 +1036,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner and additionally assign alice for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner) and additionally assign [alice](https://github.com/alice) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -1053,7 +1071,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by:
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner and additionally assign alice for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner) and additionally assign [alice](https://github.com/alice) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -1218,7 +1236,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			expectedComment: `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by: *<a href="" title="Approved">Alice</a>*
-**Once this PR has been reviewed and has the lgtm label**, please ask for approval from cjwagner. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [cjwagner](https://github.com/cjwagner). For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
 
@@ -1241,10 +1259,10 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 			"a/b": layeredsets.NewString("alice", "bob"),
 			"c":   layeredsets.NewString("cblecker", "cjwagner"),
 		},
-		leafApprovers: map[string]sets.String{
-			"a":   sets.NewString("alice"),
-			"a/b": sets.NewString("bob"),
-			"c":   sets.NewString("cblecker", "cjwagner"),
+		leafApprovers: map[string]sets.Set[string]{
+			"a":   sets.New[string]("alice"),
+			"a/b": sets.New[string]("bob"),
+			"c":   sets.New[string]("cblecker", "cjwagner"),
 		},
 		approverOwners: map[string]string{
 			"a/a.go":                   "a",
@@ -1380,28 +1398,36 @@ type fakeRepoOwners struct {
 	fakeRepo
 }
 
-func (fro fakeRepoOwners) AllOwners() sets.String {
-	return sets.String{}
+func (fro fakeRepoOwners) AllApprovers() sets.Set[string] {
+	return sets.Set[string]{}
 }
 
-func (fro fakeRepoOwners) FindLabelsForFile(path string) sets.String {
-	return sets.NewString()
+func (fro fakeRepoOwners) AllOwners() sets.Set[string] {
+	return sets.Set[string]{}
+}
+
+func (fro fakeRepoOwners) AllReviewers() sets.Set[string] {
+	return sets.Set[string]{}
+}
+
+func (fro fakeRepoOwners) FindLabelsForFile(path string) sets.Set[string] {
+	return sets.New[string]()
 }
 
 func (fro fakeRepoOwners) FindReviewersOwnersForFile(path string) string {
 	return ""
 }
 
-func (fro fakeRepoOwners) LeafReviewers(path string) sets.String {
-	return sets.NewString()
+func (fro fakeRepoOwners) LeafReviewers(path string) sets.Set[string] {
+	return sets.New[string]()
 }
 
 func (fro fakeRepoOwners) Reviewers(path string) layeredsets.String {
 	return layeredsets.NewString()
 }
 
-func (fro fakeRepoOwners) RequiredReviewers(path string) sets.String {
-	return sets.NewString()
+func (fro fakeRepoOwners) RequiredReviewers(path string) sets.Set[string] {
+	return sets.New[string]()
 }
 
 func TestHandleGenericComment(t *testing.T) {

@@ -156,7 +156,7 @@ type FakeClient struct {
 
 type TeamWithMembers struct {
 	Team    github.Team
-	Members sets.String
+	Members sets.Set[string]
 }
 
 func (f *FakeClient) BotUser() (*github.UserData, error) {
@@ -358,6 +358,11 @@ func (f *FakeClient) DeleteCommentWithContext(_ context.Context, owner, repo str
 
 // DeleteStaleComments deletes comments flagged by isStale.
 func (f *FakeClient) DeleteStaleComments(org, repo string, number int, comments []github.IssueComment, isStale func(github.IssueComment) bool) error {
+	return f.DeleteStaleCommentsWithContext(context.Background(), org, repo, number, comments, isStale)
+}
+
+// DeleteStaleCommentsWithContext deletes comments flagged by isStale with a provided context.
+func (f *FakeClient) DeleteStaleCommentsWithContext(ctx context.Context, org, repo string, number int, comments []github.IssueComment, isStale func(github.IssueComment) bool) error {
 	if comments == nil {
 		comments, _ = f.ListIssueComments(org, repo, number)
 	}
@@ -571,10 +576,10 @@ func (f *FakeClient) GetIssueLabels(owner, repo string, number int) ([]github.La
 	defer f.lock.RUnlock()
 	re := regexp.MustCompile(fmt.Sprintf(`^%s/%s#%d:(.*)$`, owner, repo, number))
 	la := []github.Label{}
-	allLabels := sets.NewString(f.IssueLabelsExisting...)
+	allLabels := sets.New[string](f.IssueLabelsExisting...)
 	allLabels.Insert(f.IssueLabelsAdded...)
 	allLabels.Delete(f.IssueLabelsRemoved...)
-	for _, l := range allLabels.List() {
+	for _, l := range sets.List(allLabels) {
 		groups := re.FindStringSubmatch(l)
 		if groups != nil {
 			la = append(la, github.Label{Name: groups[1]})
@@ -585,16 +590,26 @@ func (f *FakeClient) GetIssueLabels(owner, repo string, number int) ([]github.La
 
 // AddLabel adds a label
 func (f *FakeClient) AddLabel(owner, repo string, number int, label string) error {
-	return f.AddLabels(owner, repo, number, label)
+	return f.AddLabelsWithContext(context.Background(), owner, repo, number, label)
+}
+
+// AddLabelWithContext adds a label with a provided context
+func (f *FakeClient) AddLabelWithContext(ctx context.Context, owner, repo string, number int, label string) error {
+	return f.AddLabelsWithContext(context.Background(), owner, repo, number, label)
 }
 
 // AddLabels adds a list of labels
 func (f *FakeClient) AddLabels(owner, repo string, number int, labels ...string) error {
+	return f.AddLabelsWithContext(context.Background(), owner, repo, number, labels...)
+}
+
+// AddLabelsWithContext adds a list of labels with a provided context
+func (f *FakeClient) AddLabelsWithContext(ctx context.Context, owner, repo string, number int, labels ...string) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	for _, label := range labels {
 		labelString := fmt.Sprintf("%s/%s#%d:%s", owner, repo, number, label)
-		if sets.NewString(f.IssueLabelsAdded...).Has(labelString) {
+		if sets.New[string](f.IssueLabelsAdded...).Has(labelString) {
 			return fmt.Errorf("cannot add %v to %s/%s/#%d", label, owner, repo, number)
 		}
 		if f.RepoLabelsExisting == nil {
@@ -619,6 +634,11 @@ func (f *FakeClient) AddLabels(owner, repo string, number int, labels ...string)
 
 // RemoveLabel removes a label
 func (f *FakeClient) RemoveLabel(owner, repo string, number int, label string) error {
+	return f.RemoveLabelWithContext(context.Background(), owner, repo, number, label)
+}
+
+// RemoveLabelWithContext removes a label with a provided context
+func (f *FakeClient) RemoveLabelWithContext(ctx context.Context, owner, repo string, number int, label string) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	labelString := fmt.Sprintf("%s/%s#%d:%s", owner, repo, number, label)
@@ -807,8 +827,8 @@ func (f *FakeClient) ListMilestones(org, repo string) ([]github.Milestone, error
 	return milestones, nil
 }
 
-// ListPRCommits lists commits for a given PR.
-func (f *FakeClient) ListPRCommits(org, repo string, prNumber int) ([]github.RepositoryCommit, error) {
+// ListPullRequestCommits lists commits for a given PR.
+func (f *FakeClient) ListPullRequestCommits(org, repo string, prNumber int) ([]github.RepositoryCommit, error) {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 	k := fmt.Sprintf("%s/%s#%d", org, repo, prNumber)

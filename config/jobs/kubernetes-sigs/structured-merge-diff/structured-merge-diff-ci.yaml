@@ -1,5 +1,6 @@
 periodics:
 - name: ci-structured-merge-diff-test
+  cluster: eks-prow-build-cluster
   interval: 12h
   labels:
     preset-service-account: "true"
@@ -11,17 +12,25 @@ periodics:
     path_alias: sigs.k8s.io/structured-merge-diff
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - go
       args:
       - test
       - -race
       - ./...
+      resources:
+        limits:
+          cpu: 2
+          memory: 4Gi
+        requests:
+          cpu: 2
+          memory: 4Gi
   annotations:
     testgrid-dashboards: sig-api-machinery-structured-merge-diff
     testgrid-tab-name: ci-test
 - name: ci-structured-merge-diff-gofmt
+  cluster: eks-prow-build-cluster
   interval: 12h
   labels:
     preset-service-account: "true"
@@ -33,11 +42,18 @@ periodics:
     path_alias: sigs.k8s.io/structured-merge-diff
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - bash
       - -c
       - test -z "$({ find . -name "*.go" | grep -v "\\/vendor\\/" | xargs gofmt -s -d | tee /dev/stderr; })"
+      resources:
+        limits:
+          cpu: 2
+          memory: 4Gi
+        requests:
+          cpu: 2
+          memory: 4Gi
   annotations:
     testgrid-dashboards: sig-api-machinery-structured-merge-diff
     testgrid-tab-name: ci-gofmt

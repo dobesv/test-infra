@@ -17,11 +17,12 @@ limitations under the License.
 package cache
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
-	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/sirupsen/logrus"
+	"k8s.io/utils/lru"
 )
 
 // Overview
@@ -35,12 +36,42 @@ import (
 // many concurrent threads all attempt to look up the same (missing) key/value
 // pair from the cache (see Alan Donovan and Brian Kernighan, "The Go
 // Programming Language" (Addison-Wesley, 2016), p. 277).
+//
+// In practical terms, this means that if 1000 requests come in at the same time
+// for the same key, only the first one will perform the value construction
+// while the other 999 will wait for this first goroutine to finish resolving
+// the value. This property makes this cache resilient and is what is meant by
+// "non-blocking".
 
 // LRUCache is the actual concurrent non-blocking cache.
 type LRUCache struct {
 	*sync.Mutex
-	*simplelru.LRU
+	*lru.Cache
+	callbacks Callbacks
 }
+
+// Callbacks stores various callbacks that may fire during the lifetime of an
+// LRUCache.
+//
+// NOTE: You must make sure that your callbacks are able to return quickly,
+// because having slow callbacks will result in degraded cache performance
+// (because the cache invokes your callbacks synchronously). The reason why we
+// do this synchronously (and not invoke callbacks in a separate goroutine
+// ourselves) is because we want to give users the flexibility to do that
+// themselves. Hard-coding in a `go ...` invocation in our callback call sites
+// would risk unnecessarily costing performance if the callbacks themselves are
+// already optimized to return quickly.
+type Callbacks struct {
+	LookupsCallback         EventCallback
+	HitsCallback            EventCallback
+	MissesCallback          EventCallback
+	ForcedEvictionsCallback lru.EvictionFunc
+	ManualEvictionsCallback EventCallback
+}
+
+// EventCallback is similar to simplelru.EvictCallback, except that it doesn't
+// take a value argument.
+type EventCallback func(key interface{})
 
 // ValConstructor is used to construct a value. The assumption is that this
 // ValConstructor is expensive to compute, and that we need to memoize it via
@@ -86,13 +117,20 @@ func (p *Promise) resolve() {
 }
 
 // NewLRUCache returns a new LRUCache with a given size (number of elements).
-func NewLRUCache(size int) (*LRUCache, error) {
-	cache, err := simplelru.NewLRU(size, nil)
-	if err != nil {
-		return nil, err
+// The forcedEvictionsCallback is a function that is called when an eviction occurs in the
+// underlying cache.
+func NewLRUCache(size int,
+	callbacks Callbacks) (*LRUCache, error) {
+	if size <= 0 {
+		return nil, errors.New("Must provide a positive size")
 	}
+	cache := lru.NewWithEvictionFunc(size, callbacks.ForcedEvictionsCallback)
 
-	return &LRUCache{&sync.Mutex{}, cache}, nil
+	return &LRUCache{
+		&sync.Mutex{},
+		cache,
+		callbacks,
+	}, nil
 }
 
 // GetOrAdd tries to use a cache if it is available to get a Value. It is
@@ -109,6 +147,9 @@ func (lruCache *LRUCache) GetOrAdd(
 	valConstructor ValConstructor) (interface{}, bool, error) {
 
 	// Cache lookup.
+	if lruCache.callbacks.LookupsCallback != nil {
+		lruCache.callbacks.LookupsCallback(key)
+	}
 	lruCache.Lock()
 	var promise *Promise
 	var ok bool
@@ -122,6 +163,14 @@ func (lruCache *LRUCache) GetOrAdd(
 		// For now we just unlock the overall lruCache itself so that it can
 		// service other GetOrAdd() calls to it.
 		lruCache.Unlock()
+
+		// Record the cache "hit". To be more precise, there are actually two
+		// possibilities here --- either the value is already ready to be
+		// consumed (a true cache hit), or the value is being constructed and we
+		// have to wait for the promise to resolve first.
+		if lruCache.callbacks.HitsCallback != nil {
+			lruCache.callbacks.HitsCallback(key)
+		}
 
 		// If the type is not a Promise type, there's no need to wait and we can
 		// just return immediately with an error.
@@ -167,10 +216,15 @@ func (lruCache *LRUCache) GetOrAdd(
 		// don't care if the underlying LRU cache had to evict an existing
 		// entry.
 		promise = newPromise(valConstructor)
-		_ = lruCache.Add(key, promise)
+		lruCache.Add(key, promise)
 		// We must unlock here so that the cache does not block other GetOrAdd()
 		// calls to it for different (or same) key/value pairs.
 		lruCache.Unlock()
+
+		// Record the cache miss.
+		if lruCache.callbacks.MissesCallback != nil {
+			lruCache.callbacks.MissesCallback(key)
+		}
 
 		// Step 2 & 3
 		//
@@ -204,15 +258,10 @@ func (lruCache *LRUCache) GetOrAdd(
 		// own (we would not have to do this eviction ourselves manually).
 		if promise.err != nil {
 			logrus.WithField("key", key).Infof("promise was successfully resolved, but the call to resolve() returned an error; deleting key from cache...")
+
 			lruCache.Lock()
-			keyWasFoundBeforeRemoval := lruCache.Remove(key)
+			lruCache.Remove(key)
 			lruCache.Unlock()
-			if keyWasFoundBeforeRemoval {
-				logrus.WithField("key", key).Infof("successfully deleted")
-			} else {
-				err := fmt.Errorf("unexpected (non-problematic) race: key deleted by the cache without our knowledge; our own deletion of this key was a NOP but this does not constitute a problem")
-				logrus.WithField("key", key).Info(err)
-			}
 		}
 	}
 

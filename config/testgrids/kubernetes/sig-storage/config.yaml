@@ -17,7 +17,6 @@ dashboard_groups:
     - sig-storage-container-object-storage-interface-api
     - sig-storage-container-object-storage-interface-controller
     - sig-storage-container-object-storage-interface-provisioner-sidecar
-    - sig-storage-container-object-storage-interface-csi-adapter
 
 dashboards:
 - name: sig-storage-kubernetes
@@ -32,12 +31,6 @@ dashboards:
       test_group_name: ci-kubernetes-e2e-gci-gce-flaky
       base_options: include-filter-by-regex=Volume%7Cstorage
       description: storage gce flaky e2e tests for master branch
-      alert_options:
-        alert_mail_to_addresses: kubernetes-sig-storage-test-failures@googlegroups.com
-    - name: gce-single-flake-attempt
-      test_group_name: ci-kubernetes-e2e-gci-gce-single-flake-attempt
-      base_options: include-filter-by-regex=Volume%7Cstorage
-      description: storage gce e2e tests for master branch with reduced flake attempt
       alert_options:
         alert_mail_to_addresses: kubernetes-sig-storage-test-failures@googlegroups.com
     - name: gce-slow
@@ -62,12 +55,6 @@ dashboards:
       test_group_name: ci-kubernetes-e2e-gci-gce-alpha-enabled-default
       base_options: include-filter-by-regex=Volume%7Cstorage
       description: storage gci gce alpha enabled default features e2e tests for master branch
-      alert_options:
-        alert_mail_to_addresses: kubernetes-sig-storage-test-failures@googlegroups.com
-    - name: gce-iscsi
-      test_group_name: ci-kubernetes-e2e-gce-iscsi
-      base_options: include-filter-by-regex=Volume%7Cstorage
-      description: storage iSCSI e2e tests for master branch
       alert_options:
         alert_mail_to_addresses: kubernetes-sig-storage-test-failures@googlegroups.com
     - name: gce-iscsi-serial
@@ -106,4 +93,3 @@ dashboards:
 - name: sig-storage-container-object-storage-interface-api
 - name: sig-storage-container-object-storage-interface-controller
 - name: sig-storage-container-object-storage-interface-provisioner-sidecar
-- name: sig-storage-container-object-storage-interface-csi-adapter

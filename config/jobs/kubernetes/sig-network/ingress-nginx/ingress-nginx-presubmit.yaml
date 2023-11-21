@@ -2,6 +2,7 @@ presubmits:
 
   kubernetes/ingress-nginx:
   - name: pull-ingress-nginx-boilerplate
+    cluster: eks-prow-build-cluster
     decorate: true
     decoration_config:
       timeout: 15m
@@ -12,14 +13,22 @@ presubmits:
       preset-kind-volume-mounts: "true"
     spec:
       containers:
-      - image: k8s.gcr.io/ingress-nginx/e2e-test-runner:v20220823-ge19026fe4@sha256:038fc60379b6ce9a0134c2ff9134edccad1f8ecbd9c6ebed9660711d05b0ed95
+      - image: registry.k8s.io/ingress-nginx/e2e-test-runner:v20230907-5bb82dcb7@sha256:421cda0f65a949b8b67b5e62a45071702d19ed458a3e2ba753171b0e66943210
         command:
         - ./hack/verify-boilerplate.sh
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
     annotations:
       testgrid-dashboards: sig-network-ingress-nginx
       testgrid-tab-name: boilerplate
 
   - name: pull-ingress-nginx-codegen
+    cluster: eks-prow-build-cluster
     decorate: true
     decoration_config:
       timeout: 15m
@@ -30,14 +39,22 @@ presubmits:
       preset-kind-volume-mounts: "true"
     spec:
       containers:
-      - image: k8s.gcr.io/ingress-nginx/e2e-test-runner:v20220823-ge19026fe4@sha256:038fc60379b6ce9a0134c2ff9134edccad1f8ecbd9c6ebed9660711d05b0ed95
+      - image: registry.k8s.io/ingress-nginx/e2e-test-runner:v20230907-5bb82dcb7@sha256:421cda0f65a949b8b67b5e62a45071702d19ed458a3e2ba753171b0e66943210
         command:
         - ./hack/verify-codegen.sh
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
     annotations:
       testgrid-dashboards: sig-network-ingress-nginx
       testgrid-tab-name: codegen
 
   - name: pull-ingress-nginx-lualint
+    cluster: eks-prow-build-cluster
     always_run: false
     decorate: true
     path_alias: k8s.io/ingress-nginx
@@ -47,14 +64,22 @@ presubmits:
       preset-kind-volume-mounts: "true"
     spec:
       containers:
-      - image: k8s.gcr.io/ingress-nginx/e2e-test-runner:v20220823-ge19026fe4@sha256:038fc60379b6ce9a0134c2ff9134edccad1f8ecbd9c6ebed9660711d05b0ed95
+      - image: registry.k8s.io/ingress-nginx/e2e-test-runner:v20230907-5bb82dcb7@sha256:421cda0f65a949b8b67b5e62a45071702d19ed458a3e2ba753171b0e66943210
         command:
         - ./hack/verify-lualint.sh
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
     annotations:
       testgrid-dashboards: sig-network-ingress-nginx
       testgrid-tab-name: lualint
 
   - name: pull-ingress-nginx-test-lua
+    cluster: eks-prow-build-cluster
     always_run: false
     decorate: true
     decoration_config:
@@ -66,10 +91,17 @@ presubmits:
       preset-kind-volume-mounts: "true"
     spec:
       containers:
-      - image: k8s.gcr.io/ingress-nginx/e2e-test-runner:v20220823-ge19026fe4@sha256:038fc60379b6ce9a0134c2ff9134edccad1f8ecbd9c6ebed9660711d05b0ed95
+      - image: registry.k8s.io/ingress-nginx/e2e-test-runner:v20230907-5bb82dcb7@sha256:421cda0f65a949b8b67b5e62a45071702d19ed458a3e2ba753171b0e66943210
         command:
         - make
         - lua-test
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
     annotations:
       testgrid-dashboards: sig-network-ingress-nginx
       testgrid-tab-name: test-lua

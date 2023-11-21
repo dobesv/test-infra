@@ -39,6 +39,7 @@ import (
 
 	gitignore "github.com/denormal/go-gitignore"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/sirupsen/logrus"
 	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	cron "gopkg.in/robfig/cron.v2"
@@ -64,6 +65,12 @@ const (
 	// DefaultJobTimeout represents the default deadline for a prow job.
 	DefaultJobTimeout = 24 * time.Hour
 
+	// DefaultMoonrakerClientTimeout is the default timeout for all Moonraker
+	// clients. Note that this is a client-side timeout, and does not affect
+	// whether Moonraker itself will finish doing the Git fetch/parsing in the
+	// background (esp. for new repos that need the extra cloning time).
+	DefaultMoonrakerClientTimeout = 10 * time.Minute
+
 	ProwImplicitGitResource = "PROW_IMPLICIT_GIT_REF"
 
 	// ConfigVersionFileName is the name of a file that will be added to
@@ -76,6 +83,11 @@ const (
 	DefaultTenantID = "GlobalDefaultID"
 
 	ProwIgnoreFileName = ".prowignore"
+)
+
+var (
+	DefaultDiffOpts []cmp.Option = []cmp.Option{cmpopts.IgnoreFields(TideBranchMergeType{}, "Regexpr"),
+		cmpopts.IgnoreUnexported(Gerrit{})}
 )
 
 // Config is a read-only snapshot of the config.
@@ -104,7 +116,7 @@ type JobConfig struct {
 
 	// AllRepos contains all Repos that have one or more jobs configured or
 	// for which a tide query is configured.
-	AllRepos sets.String `json:"-"`
+	AllRepos sets.Set[string] `json:"-"`
 
 	// ProwYAMLGetterWithDefaults is the function to get a ProwYAML with
 	// defaults based on the rest of the Config. Tests should provide their own
@@ -145,6 +157,11 @@ type ProwConfig struct {
 	// same name. It encodes an allowlist of API clients and what kinds of Prow
 	// Jobs they are authorized to trigger.
 	Gangway Gangway `json:"gangway,omitempty"`
+
+	// Moonraker contains configurations for Moonraker, such as the client
+	// timeout to use for all Prow services that need to send requests to
+	// Moonraker.
+	Moonraker Moonraker `json:"moonraker,omitempty"`
 
 	// TODO: Move this out of the main config.
 	JenkinsOperators []JenkinsOperator `json:"jenkins_operators,omitempty"`
@@ -206,6 +223,10 @@ type ProwConfig struct {
 	// match a job are used. Later matching entries override the fields of earlier
 	// matching entires.
 	ProwJobDefaultEntries []*ProwJobDefaultEntry `json:"prowjob_default_entries,omitempty"`
+
+	// DisabledClusters holds a list of disabled build cluster names. The same context names will be ignored while
+	// Prow components load the kubeconfig files.
+	DisabledClusters []string `json:"disabled_clusters,omitempty"`
 }
 
 type InRepoConfig struct {
@@ -286,7 +307,7 @@ func keysForIdentifier(identifier string) []string {
 	candidates = append(candidates, "*")
 
 	var res []string
-	visited := sets.NewString()
+	visited := sets.New[string]()
 	for _, cand := range candidates {
 		if visited.Has(cand) {
 			continue
@@ -621,13 +642,13 @@ func (c *Controller) ReportTemplateForRepo(refs *prowapi.Refs) *template.Templat
 // Plank is config for the plank controller.
 type Plank struct {
 	Controller `json:",inline"`
-	// PodPendingTimeout is after how long the controller will perform a garbage
+	// PodPendingTimeout defines how long the controller will wait to perform a garbage
 	// collection on pending pods. Defaults to 10 minutes.
 	PodPendingTimeout *metav1.Duration `json:"pod_pending_timeout,omitempty"`
-	// PodRunningTimeout is after how long the controller will abort a prowjob pod
+	// PodRunningTimeout defines how long the controller will wait to abort a prowjob pod
 	// stuck in running state. Defaults to two days.
 	PodRunningTimeout *metav1.Duration `json:"pod_running_timeout,omitempty"`
-	// PodUnscheduledTimeout is after how long the controller will abort a prowjob
+	// PodUnscheduledTimeout defines how long the controller will wait to abort a prowjob
 	// stuck in an unscheduled state. Defaults to 5 minutes.
 	PodUnscheduledTimeout *metav1.Duration `json:"pod_unscheduled_timeout,omitempty"`
 
@@ -908,7 +929,7 @@ func (p Plank) GetJobURLPrefix(pj *prowapi.ProwJob) string {
 
 // Gerrit is config for the gerrit controller.
 type Gerrit struct {
-	// TickInterval is how often we do a sync with binded gerrit instance.
+	// TickInterval is how often we do a sync with bound gerrit instance.
 	TickInterval *metav1.Duration `json:"tick_interval,omitempty"`
 	// RateLimit defines how many changes to query per gerrit API call
 	// default is 5.
@@ -917,6 +938,13 @@ type Gerrit struct {
 	// job runs for a given CL.
 	DeckURL        string                `json:"deck_url,omitempty"`
 	OrgReposConfig *GerritOrgRepoConfigs `json:"org_repos_config,omitempty"`
+	// AllowedPresubmitTriggerRe is used to match presubmit test related commands in comments
+	AllowedPresubmitTriggerRe          *CopyableRegexp `json:"-"`
+	AllowedPresubmitTriggerReRawString string          `json:"allowed_presubmit_trigger_re,omitempty"`
+}
+
+func (g *Gerrit) IsAllowedPresubmitTrigger(message string) bool {
+	return g.AllowedPresubmitTriggerRe.MatchString(message)
 }
 
 // GerritOrgRepoConfigs is config for repos.
@@ -963,16 +991,16 @@ func (goc *GerritOrgRepoConfigs) AllRepos() map[string]map[string]*GerritQueryFi
 	return res
 }
 
-func (goc *GerritOrgRepoConfigs) OptOutHelpRepos() map[string]sets.String {
-	var res map[string]sets.String
+func (goc *GerritOrgRepoConfigs) OptOutHelpRepos() map[string]sets.Set[string] {
+	var res map[string]sets.Set[string]
 	for _, orgConfig := range *goc {
 		if !orgConfig.OptOutHelp {
 			continue
 		}
 		if res == nil {
-			res = make(map[string]sets.String)
+			res = make(map[string]sets.Set[string])
 		}
-		res[orgConfig.Org] = res[orgConfig.Org].Union(sets.NewString(orgConfig.Repos...))
+		res[orgConfig.Org] = res[orgConfig.Org].Union(sets.New[string](orgConfig.Repos...))
 	}
 	return res
 }
@@ -1210,7 +1238,7 @@ type Deck struct {
 	AdditionalAllowedBuckets []string `json:"additional_allowed_buckets,omitempty"`
 	// AllKnownStorageBuckets contains all storage buckets configured in all of the
 	// job configs.
-	AllKnownStorageBuckets sets.String `json:"-"`
+	AllKnownStorageBuckets sets.Set[string] `json:"-"`
 }
 
 // Validate performs validation and sanitization on the Deck object.
@@ -1261,7 +1289,7 @@ func (c *Config) ValidateStorageBucket(bucketName string) error {
 	}
 
 	if !c.Deck.AllKnownStorageBuckets.Has(bucketName) {
-		return NotAllowedBucketError(fmt.Errorf("bucket %q not in allowed list (%v)", bucketName, c.Deck.AllKnownStorageBuckets.List()))
+		return NotAllowedBucketError(fmt.Errorf("bucket %q not in allowed list (%v)", bucketName, sets.List(c.Deck.AllKnownStorageBuckets)))
 	}
 	return nil
 }
@@ -1275,8 +1303,8 @@ func (d *Deck) shouldValidateStorageBuckets() bool {
 	return !*d.SkipStoragePathValidation
 }
 
-func calculateStorageBuckets(c *Config) sets.String {
-	knownBuckets := sets.NewString(c.Deck.AdditionalAllowedBuckets...)
+func calculateStorageBuckets(c *Config) sets.Set[string] {
+	knownBuckets := sets.New[string](c.Deck.AdditionalAllowedBuckets...)
 	for _, dc := range c.Plank.DefaultDecorationConfigs {
 		if dc.Config != nil && dc.Config.GCSConfiguration != nil && dc.Config.GCSConfiguration.Bucket != "" {
 			knownBuckets.Insert(stripProviderPrefixFromBucket(dc.Config.GCSConfiguration.Bucket))
@@ -1640,7 +1668,7 @@ func ReadJobConfig(jobConfig string, yamlOpts ...yaml.JSONOpt) (JobConfig, error
 	}
 	// we need to ensure all config files have unique basenames,
 	// since updateconfig plugin will use basename as a key in the configmap.
-	uniqueBasenames := sets.String{}
+	uniqueBasenames := sets.Set[string]{}
 
 	jobConfigCount := 0
 	allStart := time.Now()
@@ -1782,7 +1810,7 @@ func loadConfig(prowConfig, jobConfig string, additionalProwConfigDirs []string,
 		nc.ConfigVersionSHA = string(content)
 	}
 
-	nc.AllRepos = sets.String{}
+	nc.AllRepos = sets.Set[string]{}
 	for _, query := range nc.Tide.Queries {
 		for _, repo := range query.Repos {
 			nc.AllRepos.Insert(repo)
@@ -2107,12 +2135,12 @@ func (c *Config) finalizeJobConfig() error {
 func (c *Config) validateComponentConfig() error {
 	for k, v := range c.Plank.JobURLPrefixConfig {
 		if _, err := url.Parse(v); err != nil {
-			return fmt.Errorf(`Invalid value for Planks job_url_prefix_config["%s"]: %v`, k, err)
+			return fmt.Errorf(`invalid value for Planks job_url_prefix_config["%s"]: %v`, k, err)
 		}
 	}
 	if c.Gerrit.DeckURL != "" {
 		if _, err := url.Parse(c.Gerrit.DeckURL); err != nil {
-			return fmt.Errorf(`Invalid value for gerrit.deck_url: %v`, err)
+			return fmt.Errorf("invalid value for gerrit.deck_url: %v", err)
 		}
 	}
 
@@ -2146,6 +2174,10 @@ func (c *Config) validateComponentConfig() error {
 	}
 
 	if err := c.Gangway.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.Moonraker.Validate(); err != nil {
 		return err
 	}
 
@@ -2200,7 +2232,7 @@ func (c Config) validateJobBase(v JobBase, jobType prowapi.ProwJobType) error {
 	if err := validateAnnotation(v.Annotations); err != nil {
 		return err
 	}
-	validJobQueueNames := sets.StringKeySet(c.Plank.JobQueueCapacities)
+	validJobQueueNames := sets.KeySet[string](c.Plank.JobQueueCapacities)
 	if err := validateJobQueueName(v.JobQueueName, validJobQueueNames); err != nil {
 		return err
 	}
@@ -2265,7 +2297,7 @@ func ValidateRefs(repo string, jobBase JobBase) error {
 		gitRefs[fmt.Sprintf("%s/%s", ref.Org, ref.Repo)]++
 	}
 
-	dupes := sets.NewString()
+	dupes := sets.New[string]()
 	for gitRef, count := range gitRefs {
 		if count > 1 {
 			dupes.Insert(gitRef)
@@ -2273,8 +2305,8 @@ func ValidateRefs(repo string, jobBase JobBase) error {
 	}
 
 	if dupes.Len() > 0 {
-		return fmt.Errorf("Invalid job %s on repo %s: the following refs specified more than once: %s",
-			jobBase.Name, repo, strings.Join(dupes.List(), ","))
+		return fmt.Errorf("invalid job %s on repo %s: the following refs specified more than once: %s",
+			jobBase.Name, repo, strings.Join(sets.List(dupes), ","))
 	}
 	return nil
 }
@@ -2320,7 +2352,7 @@ func (c Config) validatePeriodics(periodics []Periodic) error {
 	var errs []error
 
 	// validate no duplicated periodics.
-	validPeriodics := sets.NewString()
+	validPeriodics := sets.New[string]()
 	// Ensure that the periodic durations are valid and specs exist.
 	for j, p := range periodics {
 		if validPeriodics.Has(p.Name) {
@@ -2434,6 +2466,12 @@ func parseProwConfig(c *Config) error {
 	if c.Gerrit.RateLimit == 0 {
 		c.Gerrit.RateLimit = 5
 	}
+
+	re, err := regexp.Compile(c.Gerrit.AllowedPresubmitTriggerReRawString)
+	if err != nil {
+		return fmt.Errorf("failed to compile regex for allowed presubmit triggers: %s", err.Error())
+	}
+	c.Gerrit.AllowedPresubmitTriggerRe = &CopyableRegexp{re}
 
 	if c.Tide.Gerrit != nil {
 		if c.Tide.Gerrit.RateLimit == 0 {
@@ -2654,12 +2692,8 @@ func parseProwConfig(c *Config) error {
 		}
 	}
 
-	for name, method := range c.Tide.MergeType {
-		if method != types.MergeMerge &&
-			method != types.MergeRebase &&
-			method != types.MergeSquash {
-			return fmt.Errorf("merge type %q for %s is not a valid type", method, name)
-		}
+	if err := parseTideMergeType(c.Tide.MergeType); err != nil {
+		return fmt.Errorf("tide merge type: %w", err)
 	}
 
 	for name, templates := range c.Tide.MergeTemplate {
@@ -2735,7 +2769,51 @@ func parseProwConfig(c *Config) error {
 		return fmt.Errorf("Forbidden to set both Policy.Include and Policy.Exclude, Please use either Include or Exclude!")
 	}
 
+	// Avoid using a Moonraker client timeout of infinity (default behavior of
+	// https://pkg.go.dev/net/http#Client) by setting a default value.
+	if c.Moonraker.ClientTimeout == nil {
+		c.Moonraker.ClientTimeout = &metav1.Duration{Duration: DefaultMoonrakerClientTimeout}
+	}
+
 	return nil
+}
+
+// parseTideMergeType function parses a tide merge configuration and sets regexps out of every branch name.
+func parseTideMergeType(tideMergeTypes map[string]TideOrgMergeType) utilerrors.Aggregate {
+	isTideMergeTypeValid := func(mm types.PullRequestMergeType) bool {
+		return mm == types.MergeMerge || mm == types.MergeRebase || mm == types.MergeSquash
+	}
+	mergeTypeErrs := make([]error, 0)
+	for org, orgConfig := range tideMergeTypes {
+		// Validate orgs
+		if orgConfig.MergeType != "" && !isTideMergeTypeValid(orgConfig.MergeType) {
+			mergeTypeErrs = append(mergeTypeErrs,
+				fmt.Errorf("merge type %q for %s is not a valid type", orgConfig.MergeType, org))
+		}
+		for repo, repoConfig := range orgConfig.Repos {
+			// Validate repos
+			if repoConfig.MergeType != "" && !isTideMergeTypeValid(repoConfig.MergeType) {
+				mergeTypeErrs = append(mergeTypeErrs,
+					fmt.Errorf("merge type %q for %s/%s is not a valid type", repoConfig.MergeType, org, repo))
+			}
+			for branch, branchConfig := range repoConfig.Branches {
+				// Validate branches
+				regexpr, err := regexp.Compile(branch)
+				if err != nil {
+					mergeTypeErrs = append(mergeTypeErrs, fmt.Errorf("regex %q is not valid", branch))
+				} else {
+					branchConfig.Regexpr = regexpr
+				}
+				if !isTideMergeTypeValid(branchConfig.MergeType) {
+					mergeTypeErrs = append(mergeTypeErrs,
+						fmt.Errorf("merge type %q for %s/%s@%s is not a valid type",
+							branchConfig.MergeType, org, repo, branch))
+				}
+				repoConfig.Branches[branch] = branchConfig
+			}
+		}
+	}
+	return utilerrors.NewAggregate(mergeTypeErrs)
 }
 
 func validateLabels(labels map[string]string) error {
@@ -2764,7 +2842,7 @@ func validateAnnotation(a map[string]string) error {
 	return nil
 }
 
-func validateJobQueueName(name string, validNames sets.String) error {
+func validateJobQueueName(name string, validNames sets.Set[string]) error {
 	if name != "" && !validNames.Has(name) {
 		return fmt.Errorf("invalid job queue name %s", name)
 	}
@@ -2775,7 +2853,7 @@ func validateAgent(v JobBase, podNamespace string) error {
 	k := string(prowapi.KubernetesAgent)
 	j := string(prowapi.JenkinsAgent)
 	p := string(prowapi.TektonAgent)
-	agents := sets.NewString(k, j, p)
+	agents := sets.New[string](k, j, p)
 	agent := v.Agent
 	switch {
 	case !agents.Has(agent):
@@ -2842,25 +2920,28 @@ func ValidatePipelineRunSpec(jobType prowapi.ProwJobType, extraRefs []prowapi.Re
 	// be used or removed. (Specifying an unused extra ref must always be
 	// unintentional so we want to warn the user.)
 	extraIndexes := sets.NewInt()
-	for _, resource := range spec.Resources {
-		// Validate that periodic jobs don't request an implicit git ref.
-		if jobType == prowapi.PeriodicJob && resource.ResourceRef.Name == ProwImplicitGitResource {
-			return fmt.Errorf("periodic jobs do not have an implicit git ref to replace %s", ProwImplicitGitResource)
-		}
+	if spec.PipelineSpec != nil {
+		for _, task := range spec.PipelineSpec.Tasks {
+			// Validate that periodic jobs don't request an implicit git ref.
+			if jobType == prowapi.PeriodicJob && task.TaskRef.Name == ProwImplicitGitResource {
+				return fmt.Errorf("periodic jobs do not have an implicit git ref to replace %s", ProwImplicitGitResource)
+			}
 
-		match := ReProwExtraRef.FindStringSubmatch(resource.ResourceRef.Name)
-		if len(match) != 2 {
-			continue
+			match := ReProwExtraRef.FindStringSubmatch(task.TaskRef.Name)
+			if len(match) != 2 {
+				continue
+			}
+			if len(match[1]) > 1 && match[1][0] == '0' {
+				return fmt.Errorf("task %q: leading zeros are not allowed in PROW_EXTRA_GIT_REF_* indexes", task.Name)
+			}
+			i, _ := strconv.Atoi(match[1]) // This can't error based on the regexp.
+			extraIndexes.Insert(i)
 		}
-		if len(match[1]) > 1 && match[1][0] == '0' {
-			return fmt.Errorf("resource %q: leading zeros are not allowed in PROW_EXTRA_GIT_REF_* indexes", resource.Name)
-		}
-		i, _ := strconv.Atoi(match[1]) // This can't error based on the regexp.
-		extraIndexes.Insert(i)
 	}
+
 	for i := range extraRefs {
 		if !extraIndexes.Has(i) {
-			return fmt.Errorf("extra_refs[%d] is not used; some resource must reference PROW_EXTRA_GIT_REF_%d", i, i)
+			return fmt.Errorf("extra_refs[%d] is not used; some task must reference PROW_EXTRA_GIT_REF_%d", i, i)
 		}
 	}
 	if len(extraRefs) != extraIndexes.Len() {
@@ -2868,11 +2949,7 @@ func ValidatePipelineRunSpec(jobType prowapi.ProwJobType, extraRefs []prowapi.Re
 		for i := range extraIndexes {
 			strs = append(strs, strconv.Itoa(i))
 		}
-		return fmt.Errorf(
-			"%d extra_refs are specified, but the following PROW_EXTRA_GIT_REF_* indexes are used: %s.",
-			len(extraRefs),
-			strings.Join(strs, ", "),
-		)
+		return fmt.Errorf("%d extra_refs are specified, but the following PROW_EXTRA_GIT_REF_* indexes are used: %s", len(extraRefs), strings.Join(strs, ", "))
 	}
 	return nil
 }
@@ -2898,7 +2975,7 @@ func validatePodSpec(jobType prowapi.ProwJobType, spec *v1.PodSpec, decorationCo
 	}
 
 	if len(spec.Containers) > 1 {
-		containerNames := sets.String{}
+		containerNames := sets.Set[string]{}
 		for _, container := range spec.Containers {
 			if container.Name == "" {
 				errs = append(errs, fmt.Errorf("container does not have name. all containers must have names when defining multiple containers"))
@@ -2916,7 +2993,7 @@ func validatePodSpec(jobType prowapi.ProwJobType, spec *v1.PodSpec, decorationCo
 	}
 
 	for i := range spec.Containers {
-		envNames := sets.String{}
+		envNames := sets.Set[string]{}
 		for _, env := range spec.Containers[i].Env {
 			if envNames.Has(env.Name) {
 				errs = append(errs, fmt.Errorf("env var named %q is defined more than once", env.Name))
@@ -2932,7 +3009,7 @@ func validatePodSpec(jobType prowapi.ProwJobType, spec *v1.PodSpec, decorationCo
 		}
 	}
 
-	volumeNames := sets.String{}
+	volumeNames := sets.Set[string]{}
 	decoratedVolumeNames := decorate.VolumeMounts(decorationConfig)
 	for _, volume := range spec.Volumes {
 		if volumeNames.Has(volume.Name) {
@@ -2991,7 +3068,7 @@ func validateTriggering(job Presubmit) error {
 	}
 
 	if (job.Trigger != "" && job.RerunCommand == "") || (job.Trigger == "" && job.RerunCommand != "") {
-		return fmt.Errorf("Either both of job.Trigger and job.RerunCommand must be set, wasnt the case for job %q", job.Name)
+		return fmt.Errorf("either both of job.Trigger and job.RerunCommand must be set, wasnt the case for job %q", job.Name)
 	}
 
 	return nil
@@ -3006,7 +3083,7 @@ func validateReporting(j JobBase, r Reporter) error {
 	}
 	for label, value := range j.Labels {
 		if label == kube.GerritReportLabel && value != "" {
-			return fmt.Errorf("Gerrit report label %s set to non-empty string but job is configured to skip reporting.", label)
+			return fmt.Errorf("gerrit report label %s set to non-empty string but job is configured to skip reporting.", label)
 		}
 	}
 	return nil
@@ -3253,7 +3330,7 @@ func (pc *ProwConfig) mergeFrom(additional *ProwConfig) error {
 	}
 
 	var errs []error
-	if diff := cmp.Diff(additional, emptyReference); diff != "" {
+	if diff := cmp.Diff(additional, emptyReference, DefaultDiffOpts...); diff != "" {
 		errs = append(errs, fmt.Errorf("only 'branch-protection', 'slack_reporter_configs', 'tide.merge_method' and 'tide.queries' may be set via additional config, all other fields have no merging logic yet. Diff: %s", diff))
 	}
 	if err := pc.BranchProtection.merge(&additional.BranchProtection); err != nil {
@@ -3326,10 +3403,10 @@ func truncate(in string, maxLen int) string {
 	return in[:half] + elide + in[len(in)-half:]
 }
 
-func (pc *ProwConfig) HasConfigFor() (global bool, orgs sets.String, repos sets.String) {
+func (pc *ProwConfig) HasConfigFor() (global bool, orgs sets.Set[string], repos sets.Set[string]) {
 	global = pc.hasGlobalConfig()
-	orgs = sets.String{}
-	repos = sets.String{}
+	orgs = sets.Set[string]{}
+	repos = sets.Set[string]{}
 
 	for org, orgConfig := range pc.BranchProtection.Orgs {
 		if isPolicySet(orgConfig.Policy) {
@@ -3378,7 +3455,7 @@ func (pc *ProwConfig) hasGlobalConfig() bool {
 		Tide:                 Tide{TideGitHubConfig: TideGitHubConfig{MergeType: pc.Tide.MergeType, Queries: pc.Tide.Queries}},
 		SlackReporterConfigs: pc.SlackReporterConfigs,
 	}
-	return cmp.Diff(pc, emptyReference) != ""
+	return cmp.Diff(pc, emptyReference, DefaultDiffOpts...) != ""
 }
 
 // tideQueryMap is a map[tideQueryConfig]*tideQueryTarget. Because slices are not comparable, they

@@ -57,8 +57,10 @@ type options struct {
 	runOnce                bool
 	kubernetes             prowflagutil.KubernetesOptions
 	github                 prowflagutil.GitHubOptions
+	gerrit                 prowflagutil.GerritOptions
 	storage                prowflagutil.StorageClientOptions
 	instrumentationOptions prowflagutil.InstrumentationOptions
+	controllerManager      prowflagutil.ControllerManagerOptions
 
 	maxRecordsPerPool int
 	// historyURI where Tide should store its action history.
@@ -83,13 +85,20 @@ type options struct {
 }
 
 func (o *options) Validate() error {
-	for _, group := range []flagutil.OptionGroup{&o.kubernetes, &o.github, &o.storage, &o.config} {
+	for _, group := range []flagutil.OptionGroup{&o.kubernetes, &o.storage, &o.config, &o.controllerManager} {
 		if err := group.Validate(o.dryRun); err != nil {
 			return err
 		}
 	}
 	if o.providerName != "" && !sets.NewString(githubProviderName, gerritProviderName).Has(o.providerName) {
 		return errors.New("--provider should be github or gerrit")
+	}
+	var providerFlagGroup flagutil.OptionGroup = &o.github
+	if o.providerName == gerritProviderName {
+		providerFlagGroup = &o.gerrit
+	}
+	if err := providerFlagGroup.Validate(o.dryRun); err != nil {
+		return err
 	}
 	return nil
 }
@@ -100,7 +109,7 @@ func gatherOptions(fs *flag.FlagSet, args ...string) options {
 	fs.BoolVar(&o.dryRun, "dry-run", true, "Whether to mutate any real-world state.")
 	fs.BoolVar(&o.runOnce, "run-once", false, "If true, run only once then quit.")
 	o.github.AddCustomizedFlags(fs, prowflagutil.DisableThrottlerOptions())
-	for _, group := range []flagutil.OptionGroup{&o.kubernetes, &o.storage, &o.instrumentationOptions, &o.config} {
+	for _, group := range []flagutil.OptionGroup{&o.kubernetes, &o.storage, &o.instrumentationOptions, &o.config, &o.gerrit} {
 		group.AddFlags(fs)
 	}
 	fs.IntVar(&o.syncThrottle, "sync-hourly-tokens", 800, "The maximum number of tokens per hour to be used by the sync controller.")
@@ -112,6 +121,8 @@ func gatherOptions(fs *flag.FlagSet, args ...string) options {
 	fs.StringVar(&o.cookiefilePath, "cookiefile", "", "Path to git http.cookiefile; leave empty for anonymous access or if you are using GitHub")
 
 	fs.StringVar(&o.providerName, "provider", "", "The source code provider, only supported providers are github and gerrit, this should be set only when both GitHub and Gerrit configs are set for tide. By default provider is auto-detected as github if `tide.queries` is set, and gerrit if `tide.gerrit` is set.")
+	o.controllerManager.TimeoutListingProwJobsDefault = 30 * time.Second
+	o.controllerManager.AddFlags(fs)
 	fs.Parse(args)
 	return o
 }
@@ -155,7 +166,7 @@ func main() {
 	}
 
 	var c *tide.Controller
-	gitClient, err := o.github.GitClientFactory(o.cookiefilePath, &o.config.InRepoConfigCacheDirBase, o.dryRun)
+	gitClient, err := o.github.GitClientFactory(o.cookiefilePath, &o.config.InRepoConfigCacheDirBase, o.dryRun, false)
 	if err != nil {
 		logrus.WithError(err).Fatal("Error getting Git client.")
 	}
@@ -209,6 +220,8 @@ func main() {
 			nil,
 			o.config,
 			o.cookiefilePath,
+			o.gerrit.MaxQPS,
+			o.gerrit.MaxBurst,
 		)
 		if err != nil {
 			logrus.WithError(err).Fatal("Error creating Tide controller.")
@@ -224,7 +237,7 @@ func main() {
 		logrus.Info("Mgr finished gracefully.")
 	})
 
-	mgrSyncCtx, mgrSyncCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	mgrSyncCtx, mgrSyncCtxCancel := context.WithTimeout(context.Background(), o.controllerManager.TimeoutListingProwJobs)
 	defer mgrSyncCtxCancel()
 	if synced := mgr.GetCache().WaitForCacheSync(mgrSyncCtx); !synced {
 		logrus.Fatal("Timed out waiting for cachesync")

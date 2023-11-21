@@ -41,6 +41,8 @@ import (
 )
 
 func TestExpectedStatus(t *testing.T) {
+	mergeLabel := "tide/merge-method-merge"
+	squashLabel := "tide/merge-method-squash"
 	neededLabelsWithAlt := []string{"need-1", "need-2", "need-a-very-super-duper-extra-not-short-at-all-label-name,need-3"}
 	neededLabels := []string{"need-1", "need-2", "need-a-very-super-duper-extra-not-short-at-all-label-name"}
 	forbiddenLabels := []string{"forbidden-1", "forbidden-2"}
@@ -100,6 +102,12 @@ func TestExpectedStatus(t *testing.T) {
 
 			state: github.StatusPending,
 			desc:  fmt.Sprintf(statusNotInPool, " Needs need-a-very-super-duper-extra-not-short-at-all-label-name or need-3 label."),
+		},
+		{
+			name:   "check multiple /tide labels result in conflict message",
+			labels: append(append([]string{}, neededLabels...), mergeLabel, squashLabel),
+			state:  github.StatusError,
+			desc:   fmt.Sprintf(statusNotInPool, " PR has conflicting merge method override labels"),
 		},
 		{
 			name:              "has forbidden labels",
@@ -816,7 +824,11 @@ func TestExpectedStatus(t *testing.T) {
 
 			ca := &config.Agent{}
 			ca.Set(&config.Config{ProwConfig: config.ProwConfig{Tide: config.Tide{
-				TideGitHubConfig: config.TideGitHubConfig{DisplayAllQueriesInStatus: tc.displayAllTideQueries}}}})
+				TideGitHubConfig: config.TideGitHubConfig{
+					DisplayAllQueriesInStatus: tc.displayAllTideQueries,
+					MergeLabel:                mergeLabel,
+					SquashLabel:               squashLabel,
+				}}}})
 			mmc := newMergeChecker(ca.Config, &fgc{})
 
 			sc, err := newStatusController(
@@ -1144,9 +1156,9 @@ func TestTargetUrl(t *testing.T) {
 func TestOpenPRsQuery(t *testing.T) {
 	orgs := []string{"org", "kuber"}
 	repos := []string{"k8s/k8s", "k8s/t-i"}
-	exceptions := map[string]sets.String{
-		"org":            sets.NewString("org/repo1", "org/repo2"),
-		"irrelevant-org": sets.NewString("irrelevant-org/repo1", "irrelevant-org/repo2"),
+	exceptions := map[string]sets.Set[string]{
+		"org":            sets.New[string]("org/repo1", "org/repo2"),
+		"irrelevant-org": sets.New[string]("irrelevant-org/repo1", "irrelevant-org/repo2"),
 	}
 
 	queriesByOrg := openPRsQueries(orgs, repos, exceptions)

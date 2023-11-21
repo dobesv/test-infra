@@ -13,10 +13,10 @@ plank:
       timeout: 2h
       grace_period: 15m
       utility_images:
-        clonerefs: "gcr.io/k8s-prow/clonerefs:v20230215-1f9eebbd96"
-        initupload: "gcr.io/k8s-prow/initupload:v20230215-1f9eebbd96"
-        entrypoint: "gcr.io/k8s-prow/entrypoint:v20230215-1f9eebbd96"
-        sidecar: "gcr.io/k8s-prow/sidecar:v20230215-1f9eebbd96"
+        clonerefs: "gcr.io/k8s-prow/clonerefs:v20231114-3897be59f6"
+        initupload: "gcr.io/k8s-prow/initupload:v20231114-3897be59f6"
+        entrypoint: "gcr.io/k8s-prow/entrypoint:v20231114-3897be59f6"
+        sidecar: "gcr.io/k8s-prow/sidecar:v20231114-3897be59f6"
       gcs_configuration:
         bucket: "kubernetes-jenkins"
         path_strategy: "legacy"
@@ -53,6 +53,7 @@ sinker:
 
 deck:
   spyglass:
+    announcement: "Help migrate Prow jobs to community clusters! See <a href='https://github.com/kubernetes/test-infra/issues/29722'>k8s/test-infra#29722</a> for details."
     size_limit: 200000000 # 200MB
     gcs_browser_prefix: https://gcsweb.k8s.io/gcs/
     testgrid_config: gs://k8s-testgrid/config
@@ -181,6 +182,8 @@ deck:
     - k8s-ovn
     - containerd-integration
     - ppc64le-kubernetes
+    - k8s-conform-s390x-k8s
+    - arm64-k8s-test
 
 prowjob_namespace: default
 pod_namespace: test-pods
@@ -191,8 +194,6 @@ managed_webhooks:
   respect_legacy_global_token: true
   # Config for orgs and repos that have been onboarded to this Prow instance.
   org_repo_config:
-    bazelbuild/rules_k8s:
-      token_created_after: 2020-06-24T00:10:00Z
     kubernetes:
       token_created_after: 2020-08-12T00:00:00Z
     kubernetes-client:
@@ -207,6 +208,8 @@ managed_webhooks:
       token_created_after: 2020-09-17T00:00:00Z
     cncf/apisnoop:
       token_created_after: 2020-09-22T00:00:00Z
+    etcd-io:
+      token_created_after: 2023-11-13T00:00:00Z
 
 slack_reporter_configs:
   '*':
@@ -334,6 +337,11 @@ branch-protection:
             users: []
             teams:
             - stage-bots
+        endpointslice:
+          restrictions:
+            users: []
+            teams:
+            - stage-bots
         enhancements:
           restrictions: # only allow admins
             users: []
@@ -434,11 +442,6 @@ branch-protection:
             users: []
             teams:
             - stage-bots
-        noderesourcetopology-api:
-          restrictions:
-            users: []
-            teams:
-            - stage-bots
         org:
           restrictions: # only allow admins
             users: []
@@ -522,6 +525,17 @@ branch-protection:
           required_status_checks:
             contexts:
             - lint
+        cluster-api-provider-kubevirt:
+          required_status_checks:
+            contexts:
+            - "unit_test (ubuntu-latest)"
+            - integration
+            - go-linter
+            - check-gen
+        cluster-api-provider-vsphere:
+          required_status_checks:
+            contexts:
+            - lint
         cluster-proportional-autoscaler:
           branches:
             gh-pages:
@@ -553,11 +567,12 @@ branch-protection:
         kernel-module-management:
           required_status_checks:
             contexts:
-              - in-cluster-build
-        kube-batch:
+              - e2e
+              - e2e-hub
+        kubectl-validate:
           required_status_checks:
             contexts:
-            - continuous-integration/travis-ci
+            - required
         kubernetes-scheduler-simulator:
           branches:
             gh-pages:
@@ -645,12 +660,12 @@ tide:
     - kubernetes/metrics
     - kubernetes/mount-utils
     - kubernetes/node-api
-    - kubernetes/noderesourcetopology-api
     - kubernetes/pod-security-admission
     - kubernetes/sample-apiserver
     - kubernetes/sample-cli-plugin
     - kubernetes/sample-controller
     - kubernetes-sigs/cloud-provider-azure
+    - kubernetes-sigs/cluster-api
     labels:
     - lgtm
     - approved
@@ -667,6 +682,32 @@ tide:
     - needs-rebase
   - repos:
     - kubernetes/kubernetes
+    excludedBranches:
+      - master
+      - release-1.29
+    labels:
+      - lgtm
+      - approved
+      - "cncf-cla: yes"
+    missingLabels:
+      - do-not-merge
+      - do-not-merge/blocked-paths
+      - do-not-merge/cherry-pick-not-approved
+      - do-not-merge/contains-merge-commits
+      - do-not-merge/hold
+      - do-not-merge/invalid-commit-message
+      - do-not-merge/invalid-owners-file
+      - do-not-merge/needs-kind
+      - do-not-merge/needs-sig
+      - do-not-merge/release-note-label-needed
+      - do-not-merge/work-in-progress
+      - needs-rebase
+  - repos:
+      - kubernetes/kubernetes
+    milestone: v1.29
+    includedBranches:
+      - master
+      - release-1.29
     labels:
     - lgtm
     - approved
@@ -737,6 +778,23 @@ tide:
     - do-not-merge/work-in-progress
     - needs-rebase
     - needs-kind
+  - repos:
+    - kubernetes-sigs/cluster-api
+    labels:
+      - lgtm
+      - approved
+      - "cncf-cla: yes"
+    missingLabels:
+      - do-not-merge
+      - do-not-merge/blocked-paths
+      - do-not-merge/contains-merge-commits
+      - do-not-merge/hold
+      - do-not-merge/invalid-commit-message
+      - do-not-merge/invalid-owners-file
+      - do-not-merge/needs-area
+      - do-not-merge/release-note-label-needed
+      - do-not-merge/work-in-progress
+      - needs-rebase
   merge_method:
     kubernetes-client/csharp: squash
     kubernetes-client/gen: squash
@@ -747,6 +805,7 @@ tide:
     kubernetes-sigs/krew-index: squash
     kubernetes-sigs/krew: squash
     kubernetes-sigs/kubespray: squash
+    kubernetes-sigs/kueue: squash
     kubernetes-sigs/kui: rebase
     kubernetes-sigs/security-profiles-operator: rebase
     kubernetes-sigs/service-catalog: squash
@@ -789,6 +848,10 @@ tide:
         - "cla/linuxfoundation"
         repos:
           cluster-api:
+            from-branch-protection: true
+          cluster-api-provider-kubevirt:
+            from-branch-protection: true
+          cluster-api-provider-vsphere:
             from-branch-protection: true
   batch_size_limit:
     "kubernetes/kubernetes": 15

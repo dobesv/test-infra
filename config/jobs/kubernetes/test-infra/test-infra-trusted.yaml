@@ -3,12 +3,14 @@ postsubmits:
   - name: post-org-peribolos
     cluster: test-infra-trusted
     decorate: true
+    decoration_config:
+      timeout: 150m
     branches:
     - ^main$
     max_concurrency: 1
     spec:
       containers:
-      - image: golang:1.18
+      - image: public.ecr.aws/docker/library/golang:1.20
         command:
         - ./admin/update.sh
         args:
@@ -40,7 +42,7 @@ postsubmits:
     spec:
       serviceAccountName: pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -61,7 +63,7 @@ postsubmits:
     spec:
       serviceAccountName: deployer # TODO(fejta): should be pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -82,7 +84,7 @@ postsubmits:
     spec:
       serviceAccountName: deployer # TODO(fejta): should be pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -103,19 +105,19 @@ postsubmits:
     spec:
       serviceAccountName: pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
         - --scratch-bucket=gs://k8s-testimages-scratch
         - --project=k8s-prow
         - images/git/
-  - name: post-test-infra-push-git-gke-gcloud-auth
+  - name: post-test-infra-push-git-custom-k8s-auth
     cluster: test-infra-trusted
-    run_if_changed: '^images/git-gke-gcloud-auth/'
+    run_if_changed: '^images/git-custom-k8s-auth/'
     annotations:
       testgrid-dashboards: sig-testing-images
-      testgrid-tab-name: git-gke-gcloud-auth
+      testgrid-tab-name: git-custom-k8s-auth
     decorate: true
     branches:
     - ^master$
@@ -123,13 +125,13 @@ postsubmits:
     spec:
       serviceAccountName: pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
         - --scratch-bucket=gs://k8s-testimages-scratch
         - --project=k8s-prow
-        - images/git-gke-gcloud-auth/
+        - images/git-custom-k8s-auth/
   - name: post-test-infra-deploy-prow
     cluster: test-infra-trusted
     run_if_changed: '^(config/prow/cluster/|config/prow/Makefile$|Makefile.base.mk$)'
@@ -171,7 +173,7 @@ postsubmits:
     max_concurrency: 1
     spec:
       containers:
-      - image: gcr.io/k8s-prow/hmac:v20230215-1f9eebbd96
+      - image: gcr.io/k8s-prow/hmac:v20231114-3897be59f6
         command:
         - hmac
         args:
@@ -221,7 +223,7 @@ postsubmits:
     spec:
       serviceAccountName: pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-test-infra
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-test-infra
         command:
         - runner.sh
         args:
@@ -274,7 +276,7 @@ postsubmits:
     spec:
       serviceAccountName: deployer # TODO(fejta): should be pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -298,7 +300,7 @@ postsubmits:
     spec:
       serviceAccountName: deployer # TODO(fejta): should be pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -321,7 +323,7 @@ postsubmits:
     spec:
       serviceAccountName: deployer # TODO(fejta): should be pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -345,7 +347,7 @@ postsubmits:
     spec:
       serviceAccountName: deployer # TODO(fejta): should be pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -369,7 +371,7 @@ postsubmits:
     spec:
       serviceAccountName: deployer # TODO(fejta): should be pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -387,7 +389,7 @@ postsubmits:
       serviceAccountName: gencred-refresher
       containers:
       - name: gencred
-        image: gcr.io/k8s-prow/gencred:v20230215-1f9eebbd96
+        image: gcr.io/k8s-prow/gencred:v20231114-3897be59f6
         command:
         - gencred
         args:
@@ -434,7 +436,7 @@ postsubmits:
     spec:
       serviceAccountName: testgrid-config-updater
       containers:
-      - image: gcr.io/k8s-prow/configurator:v20230215-1f9eebbd96
+      - image: gcr.io/k8s-prow/configurator:v20231114-3897be59f6
         command:
         - configurator
         args:
@@ -493,7 +495,7 @@ postsubmits:
     spec:
       serviceAccountName: pusher
       containers:
-      - image: k8s.gcr.io/artifact-promoter/kpromo:v3.3.0-1
+      - image: registry.k8s.io/artifact-promoter/kpromo:v4.0.4-0
         command:
         - /kpromo
         args:
@@ -548,6 +550,8 @@ periodics:
     testgrid-num-failures-to-alert: '1'
   cluster: test-infra-trusted
   decorate: true
+  decoration_config:
+    timeout: 150m
   max_concurrency: 1
   extra_refs:
   - org: kubernetes
@@ -555,7 +559,7 @@ periodics:
     base_ref: main
   spec:
     containers:
-    - image: golang:1.18
+    - image: public.ecr.aws/docker/library/golang:1.20
       command:
       - ./admin/update.sh
       args:
@@ -582,7 +586,7 @@ periodics:
     base_ref: master
   spec:
     containers:
-    - image: gcr.io/k8s-prow/generic-autobumper:v20230215-1f9eebbd96
+    - image: gcr.io/k8s-prow/generic-autobumper:v20231114-3897be59f6
       command:
       - generic-autobumper
       args:
@@ -619,7 +623,7 @@ periodics:
     base_ref: master
   spec:
     containers:
-    - image: gcr.io/k8s-prow/generic-autobumper:v20230215-1f9eebbd96
+    - image: gcr.io/k8s-prow/generic-autobumper:v20231114-3897be59f6
       command:
       - generic-autobumper
       args:
@@ -689,7 +693,7 @@ periodics:
   spec:
     containers:
     - name: branchprotector
-      image: gcr.io/k8s-prow/branchprotector:v20230215-1f9eebbd96
+      image: gcr.io/k8s-prow/branchprotector:v20231114-3897be59f6
       command:
       - branchprotector
       args:
@@ -723,7 +727,7 @@ periodics:
   spec:
     containers:
     - name: label-sync
-      image: gcr.io/k8s-prow/label_sync:v20230215-1f9eebbd96
+      image: gcr.io/k8s-prow/label_sync:v20231114-3897be59f6
       command:
       - label_sync
       args:
@@ -767,7 +771,7 @@ periodics:
     serviceAccountName: gencred-refresher
     containers:
     - name: gencred
-      image: gcr.io/k8s-prow/gencred:v20230215-1f9eebbd96
+      image: gcr.io/k8s-prow/gencred:v20231114-3897be59f6
       command:
       - gencred
       args:
@@ -819,7 +823,7 @@ periodics:
   spec:
       serviceAccountName: deployer # TODO(fejta): should be pusher
       containers:
-      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230111-cd1b3caf9c
+      - image: gcr.io/k8s-staging-test-infra/image-builder:v20230711-e33377c2b4
         command:
         - /run.sh
         args:
@@ -838,7 +842,7 @@ periodics:
 # Please keep this in sync with the `pull-test-infra-prow-checkconfig` job
 - name: ci-test-infra-prow-checkconfig
   interval: 5m
-  cluster: test-infra-trusted
+  cluster: eks-prow-build-cluster
   decorate: true
   extra_refs:
   - org: kubernetes
@@ -846,7 +850,7 @@ periodics:
     base_ref: master
   spec:
     containers:
-    - image: gcr.io/k8s-prow/checkconfig:v20230215-1f9eebbd96
+    - image: gcr.io/k8s-prow/checkconfig:v20231114-3897be59f6
       command:
       - checkconfig
       args:
@@ -862,5 +866,17 @@ periodics:
       - --warnings=validate-urls
       - --warnings=unknown-fields
       - --warnings=duplicate-job-refs
+      - --warnings=unknown-fields-all
+      - --warnings=non-decorated-jobs
+      - --warnings=valid-decoration-config
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
   annotations:
     testgrid-dashboards: sig-testing-misc
+    testgrid-alert-email: kubernetes-sig-testing-alerts@googlegroups.com, k8s-infra-prow-oncall@kubernetes.io
+    testgrid-num-failures-to-alert: '10'

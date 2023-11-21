@@ -34,7 +34,6 @@ import (
 	"k8s.io/test-infra/prow/config"
 	"k8s.io/test-infra/prow/gcsupload"
 	"k8s.io/test-infra/prow/git/v2"
-	"k8s.io/test-infra/prow/io"
 	pkgio "k8s.io/test-infra/prow/io"
 	"k8s.io/test-infra/prow/pod-utils/downwardapi"
 )
@@ -209,8 +208,8 @@ func parsePullURL(u *url.URL) (org, repo string, pr int, err error) {
 }
 
 // getStorageDirsForPR returns a map from bucket names -> set of "directories" containing presubmit data
-func getStorageDirsForPR(c *config.Config, gitHubClient deckGitHubClient, gitClient git.ClientFactory, org, repo, cloneURI string, prNumber int) (map[string]sets.String, error) {
-	toSearch := make(map[string]sets.String)
+func getStorageDirsForPR(c *config.Config, gitHubClient deckGitHubClient, gitClient git.ClientFactory, org, repo, cloneURI string, prNumber int) (map[string]sets.Set[string], error) {
+	toSearch := make(map[string]sets.Set[string])
 	fullRepo := org + "/" + repo
 
 	if c.InRepoConfigEnabled(fullRepo) && gitHubClient == nil {
@@ -258,14 +257,14 @@ func getStorageDirsForPR(c *config.Config, gitHubClient deckGitHubClient, gitCli
 			bucketName = "gs://" + bucketName
 		}
 		if _, ok := toSearch[bucketName]; !ok {
-			toSearch[bucketName] = sets.String{}
+			toSearch[bucketName] = sets.Set[string]{}
 		}
 		toSearch[bucketName].Insert(gcsPath)
 	}
 	return toSearch, nil
 }
 
-func getPRHistory(ctx context.Context, prHistoryURL *url.URL, config *config.Config, opener io.Opener, gitHubClient deckGitHubClient, gitClient git.ClientFactory, githubHost string) (prHistoryTemplate, error) {
+func getPRHistory(ctx context.Context, prHistoryURL *url.URL, config *config.Config, opener pkgio.Opener, gitHubClient deckGitHubClient, gitClient git.ClientFactory, githubHost string) (prHistoryTemplate, error) {
 	start := time.Now()
 	template := prHistoryTemplate{}
 

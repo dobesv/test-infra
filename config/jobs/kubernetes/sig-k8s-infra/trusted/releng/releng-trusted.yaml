@@ -13,7 +13,7 @@ postsubmits:
     spec:
       serviceAccountName: k8s-infra-promoter
       containers:
-      - image: registry.k8s.io/artifact-promoter/kpromo:v3.4.12-1
+      - image: registry.k8s.io/artifact-promoter/kpromo:v4.0.4-0
         command:
         - /kpromo
         args:
@@ -30,7 +30,7 @@ postsubmits:
     decorate: true
     decoration_config:
       timeout: 4h
-    run_if_changed: 'k8s.gcr.io/((images/.*/images\.yaml)|(manifests/.*/promoter-manifest\.yaml))'
+    run_if_changed: 'registry.k8s.io/((images/.*/images\.yaml)|(manifests/.*/promoter-manifest\.yaml))'
     # Never run more than 1 job at a time. This is because we don't want to run
     # into a case where an older manifest PR merge gets run last (after a newer
     # one).
@@ -44,14 +44,16 @@ postsubmits:
     spec:
       serviceAccountName: k8s-infra-gcr-promoter
       containers:
-      - image: registry.k8s.io/artifact-promoter/kpromo:v3.4.12-1
+      - image: registry.k8s.io/artifact-promoter/kpromo:v4.0.4-0
         command:
         - /kpromo
         args:
         - cip
-        - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes/k8s.io/k8s.gcr.io
+        - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes/k8s.io/registry.k8s.io
         - --use-prow-manifest-diff
         - --confirm
+        - --certificate-identity-regexp=(krel-staging@k8s-releng-prod.iam.gserviceaccount.com)|(krel-trust@k8s-releng-prod.iam.gserviceaccount.com)
+        - --certificate-oidc-issuer=https://accounts.google.com
         env:
         - name: GOMAXPROCS
           value: "7"
@@ -110,7 +112,7 @@ periodics:
   spec:
     serviceAccountName: k8s-infra-promoter
     containers:
-    - image: registry.k8s.io/artifact-promoter/kpromo:v3.4.12-1
+    - image: registry.k8s.io/artifact-promoter/kpromo:v4.0.4-0
       command:
       - /kpromo
       args:
@@ -141,7 +143,7 @@ periodics:
     serviceAccountName: k8s-infra-promoter
     containers:
     - name: promote-to-mirrors
-      image: registry.k8s.io/artifact-promoter/kpromo:v3.4.12-1
+      image: registry.k8s.io/artifact-promoter/kpromo:v4.0.4-0
       command:
       - /kpromo
       args:
@@ -170,7 +172,7 @@ periodics:
           name: aws-iam-token
           readOnly: true
     - name: promote-to-mirrors-staging
-      image: registry.k8s.io/artifact-promoter/kpromo:v3.4.12-1
+      image: registry.k8s.io/artifact-promoter/kpromo:v4.0.4-0
       command:
       - /kpromo
       args:
@@ -216,9 +218,9 @@ periodics:
       - org: kubernetes
         slug: release-managers
 
-# ci-k8sio-image-promo runs every 1 hour, to make sure that the destination
-# GCRs do not deviate away from the intent of the manifest.
-- interval: 1h
+# ci-k8sio-image-promo runs daily as a backstop on top of the postsubmit
+# ~midnight pacific
+- cron: '0 7 * * *'
   cluster: k8s-infra-prow-build-trusted
   max_concurrency: 1
   # Run only 1 of image promotion postsubmit and periodic at the same time.
@@ -241,13 +243,15 @@ periodics:
     # https://github.com/kubernetes/k8s.io/pull/695.
     serviceAccountName: k8s-infra-gcr-promoter
     containers:
-    - image: registry.k8s.io/artifact-promoter/kpromo:v3.4.12-1
+    - image: registry.k8s.io/artifact-promoter/kpromo:v4.0.4-0
       command:
       - /kpromo
       args:
       - cip
-      - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes/k8s.io/k8s.gcr.io
+      - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes/k8s.io/registry.k8s.io
       - --confirm
+      - --certificate-identity-regexp=(krel-staging@k8s-releng-prod.iam.gserviceaccount.com)|(krel-trust@k8s-releng-prod.iam.gserviceaccount.com)
+      - --certificate-oidc-issuer=https://accounts.google.com
       env:
       - name: GOMAXPROCS
         value: "7"
@@ -290,6 +294,9 @@ periodics:
       - cip
       - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes-sigs/promo-tools/canary
       - --confirm
+      - --log-level=debug
+      - --certificate-identity-regexp=(keyless@projectsigstore.iam.gserviceaccount.com)|(krel-trust@k8s-releng-prod.iam.gserviceaccount.com)
+      - --certificate-oidc-issuer=https://accounts.google.com
   annotations:
     testgrid-dashboards: sig-release-releng-informing
     testgrid-alert-email: release-managers+alerts@kubernetes.io
@@ -311,7 +318,7 @@ periodics:
   spec:
     serviceAccountName: k8s-infra-gcr-promoter-bak
     containers:
-    - image: gcr.io/k8s-staging-releng/releng-ci:latest-go1.18-bullseye
+    - image: gcr.io/k8s-staging-releng/releng-ci:latest-go1.20-bookworm
       imagePullPolicy: Always
       command:
       - infra/gcp/bash/backup_tools/backup.sh
@@ -359,3 +366,24 @@ periodics:
     testgrid-alert-email: release-managers+alerts@kubernetes.io
     testgrid-dashboards: sig-release-releng-blocking
     testgrid-tab-name: git-repo-kubernetes-fast-forward
+- name: periodic-release-verify-image-signatures
+  cluster: k8s-infra-prow-build-trusted
+  interval: 4h
+  annotations:
+    testgrid-alert-email: release-managers+alerts@kubernetes.io
+    testgrid-dashboards: sig-release-releng-informing
+    testgrid-tab-name: verify-image-signatures
+  decorate: true
+  spec:
+    containers:
+    - image: gcr.io/k8s-staging-artifact-promoter/kpromo:v4.0.1-0
+      imagePullPolicy: Always
+      command:
+        - /kpromo
+        - --from-days=7
+      args:
+        - sigcheck
+  rerun_auth_config:
+    github_team_slugs:
+      - org: kubernetes
+        slug: release-managers

@@ -20,6 +20,7 @@ import (
 	"flag"
 	"reflect"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -31,7 +32,7 @@ func TestFlags(t *testing.T) {
 	cases := []struct {
 		name     string
 		args     map[string]string
-		del      sets.String
+		del      sets.Set[string]
 		expected func(*options)
 		err      bool
 	}{
@@ -58,7 +59,7 @@ func TestFlags(t *testing.T) {
 		},
 		{
 			name:     "dry run defaults to false",
-			del:      sets.NewString("--dry-run"),
+			del:      sets.New[string]("--dry-run"),
 			expected: func(o *options) {},
 		},
 		{
@@ -90,12 +91,13 @@ func TestFlags(t *testing.T) {
 					JobConfigPathFlagName:                 "job-config-path",
 					ConfigPath:                            "yo",
 					SupplementalProwConfigsFileNameSuffix: "_prowconfig.yaml",
-					InRepoConfigCacheSize:                 100,
-					InRepoConfigCacheCopies:               1,
+					InRepoConfigCacheSize:                 200,
 				},
-				dryRun:                 false,
-				instrumentationOptions: flagutil.DefaultInstrumentationOptions(),
-				changeWorkerPoolSize:   1,
+				dryRun:                   false,
+				instrumentationOptions:   flagutil.DefaultInstrumentationOptions(),
+				changeWorkerPoolSize:     1,
+				pushGatewayInterval:      time.Minute,
+				instanceConcurrencyLimit: 5,
 			}
 			if tc.expected != nil {
 				tc.expected(expected)

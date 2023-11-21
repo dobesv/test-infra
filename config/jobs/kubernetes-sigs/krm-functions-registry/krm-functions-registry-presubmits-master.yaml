@@ -1,6 +1,7 @@
 presubmits:
   kubernetes-sigs/krm-functions-registry:
   - name: pull-krm-functions-registry-test-master
+    cluster: eks-prow-build-cluster
     decorate: true
     always_run: true
     labels:
@@ -13,7 +14,7 @@ presubmits:
     spec:
       containers:
         # we use this image because we need docker-in-docker and go.
-      - image: gcr.io/k8s-staging-test-infra/krte:v20230207-ce569a5e37-1.23
+      - image: gcr.io/k8s-staging-test-infra/krte:v20230309-9a6b1b3121-1.23
         command:
         # docker-in-docker is set up in wrapper.sh
         - wrapper.sh
@@ -22,8 +23,12 @@ presubmits:
         securityContext:
           privileged: true
         resources:
+          limits:
+            cpu: 4
+            memory: 8Gi
           requests:
-            cpu: "4000m"
+            cpu: 4
+            memory: 8Gi
     annotations:
       testgrid-dashboards: sig-cli-misc
       testgrid-tab-name: krm-functions-registry-presubmit-master

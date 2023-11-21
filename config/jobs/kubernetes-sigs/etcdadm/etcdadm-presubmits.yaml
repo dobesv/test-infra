@@ -2,18 +2,27 @@
 presubmits:
   kubernetes-sigs/etcdadm:
   - name: pull-etcdadm-verify
+    cluster: eks-prow-build-cluster
     path_alias: "sigs.k8s.io/etcdadm"
     always_run: true
     decorate: true
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         command:
         - "./hack/verify-all.sh"
+        resources:
+          requests:
+            cpu: 2
+            memory: 4Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
     annotations:
       testgrid-dashboards: sig-cluster-lifecycle-etcdadm
       testgrid-tab-name: pr-verify
   - name: pull-etcdadm-test-init
+    cluster: eks-prow-build-cluster
     labels:
       preset-dind-enabled: "true"
     path_alias: "sigs.k8s.io/etcdadm"
@@ -21,13 +30,20 @@ presubmits:
     decorate: true
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         # we need privileged mode in order to do docker in docker
         securityContext:
           privileged: true
         command:
         - "runner.sh"
         - "./test/e2e/init.sh"
+        resources:
+          requests:
+            cpu: 2
+            memory: 4Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
     annotations:
       testgrid-dashboards: sig-cluster-lifecycle-etcdadm
       testgrid-tab-name: pr-test-init

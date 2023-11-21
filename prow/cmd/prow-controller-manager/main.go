@@ -46,7 +46,7 @@ import (
 	_ "k8s.io/test-infra/prow/version"
 )
 
-var allControllers = sets.NewString(plank.ControllerName)
+var allControllers = sets.New[string](plank.ControllerName)
 
 type options struct {
 	totURL string
@@ -64,11 +64,11 @@ type options struct {
 
 func gatherOptions(fs *flag.FlagSet, args ...string) options {
 	var o options
-	o.enabledControllers = prowflagutil.NewStrings(allControllers.List()...)
+	o.enabledControllers = prowflagutil.NewStrings(sets.List(allControllers)...)
 	fs.StringVar(&o.totURL, "tot-url", "", "Tot URL")
 
 	fs.StringVar(&o.selector, "label-selector", labels.Everything().String(), "Label selector to be applied in prowjobs. See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors for constructing a label selector.")
-	fs.Var(&o.enabledControllers, "enable-controller", fmt.Sprintf("Controllers to enable. Can be passed multiple times. Defaults to all controllers (%v)", allControllers.List()))
+	fs.Var(&o.enabledControllers, "enable-controller", fmt.Sprintf("Controllers to enable. Can be passed multiple times. Defaults to all controllers (%v)", sets.List(allControllers)))
 
 	fs.BoolVar(&o.dryRun, "dry-run", true, "Whether or not to make mutating API calls to GitHub.")
 	for _, group := range []flagutil.OptionGroup{&o.kubernetes, &o.github, &o.instrumentationOptions, &o.config, &o.storage} {
@@ -95,7 +95,7 @@ func (o *options) Validate() error {
 		}
 	}
 
-	if n := len(allControllers.Intersection(sets.NewString(o.enabledControllers.Strings()...))); n == 0 {
+	if n := len(allControllers.Intersection(sets.New[string](o.enabledControllers.Strings()...))); n == 0 {
 		errs = append(errs, errors.New("no controllers configured"))
 	}
 
@@ -124,7 +124,8 @@ func main() {
 		logrus.WithError(err).Fatal("Error starting config agent.")
 	}
 	cfg := configAgent.Config
-
+	o.kubernetes.SetDisabledClusters(sets.New[string](cfg().DisabledClusters...))
+	
 	var logOpts []zap.Opts
 	if cfg().LogLevel == "debug" {
 		logOpts = append(logOpts, func(o *zap.Options) {
@@ -150,13 +151,37 @@ func main() {
 		logrus.WithError(err).Fatal("Error creating manager")
 	}
 
+	// The watch apimachinery doesn't support restarts, so just exit the
+	// binary if a build cluster can be connected later.
+	callBack := func() {
+		logrus.Info("Build cluster that failed to connect initially now worked, exiting to trigger a restart.")
+		interrupts.Terminate()
+	}
+
+	// We require operating on test pods in build clusters with the following
+	// verbs. This is used during startup to check that we have the necessary
+	// authorizations on build clusters.
+	//
+	// NOTE: Setting up build cluster managers is tricky because if we don't
+	// have the required permissions, the controller manager setup machinery
+	// (library code, not our code) can return an error and this can essentially
+	// result in a fatal error, resulting in a crash loop on startup. Although
+	// other components such as crier, deck, and hook also need to talk to build
+	// clusters, we only perform this preemptive requiredTestPodVerbs check for
+	// PCM and sinker because only these latter components make use of the
+	// BuildClusterManagers() call.
+	requiredTestPodVerbs := []string{
+		"create",
+		"delete",
+		"list",
+		"watch",
+		"get",
+		"patch",
+	}
+
 	buildClusterManagers, err := o.kubernetes.BuildClusterManagers(o.dryRun,
-		// The watch apimachinery doesn't support restarts, so just exit the
-		// binary if a build cluster can be connected later .
-		func() {
-			logrus.Info("Build cluster that failed to connect initially now worked, exiting to trigger a restart.")
-			interrupts.Terminate()
-		},
+		requiredTestPodVerbs,
+		callBack,
 		func(o *manager.Options) {
 			o.Namespace = cfg().PodNamespace
 		},
@@ -187,7 +212,7 @@ func main() {
 		logrus.WithError(err).Fatal("Failed to register kubeconfig change callback")
 	}
 
-	enabledControllersSet := sets.NewString(o.enabledControllers.Strings()...)
+	enabledControllersSet := sets.New[string](o.enabledControllers.Strings()...)
 	knownClusters, err := o.kubernetes.KnownClusters(o.dryRun)
 	if err != nil {
 		logrus.WithError(err).Fatal("Failed to resolve known clusters in kubeconfig.")

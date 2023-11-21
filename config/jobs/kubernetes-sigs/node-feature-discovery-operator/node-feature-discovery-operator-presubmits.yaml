@@ -1,6 +1,7 @@
 presubmits:
   kubernetes-sigs/node-feature-discovery-operator:
   - name: pull-node-feature-discovery-operator-verify
+    cluster: eks-prow-build-cluster
     always_run: true
     skip_branches:
     - gh-pages
@@ -11,10 +12,18 @@ presubmits:
       description: "Verify source code of node-feature-discovery-operator: check formatting, lint etc."
     spec:
       containers:
-      - image: golang:1.20
+      - image: public.ecr.aws/docker/library/golang:1.21
         command:
         - scripts/test-infra/verify.sh
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
   - name: pull-node-feature-discovery-operator-verify-docs
+    cluster: eks-prow-build-cluster
     always_run: true
     skip_branches:
     - gh-pages
@@ -28,7 +37,15 @@ presubmits:
       - image: ruby:slim
         command:
         - scripts/test-infra/mdlint.sh
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
   - name: pull-node-feature-discovery-operator-build-image
+    cluster: eks-prow-build-cluster
     always_run: true
     skip_branches:
     - gh-pages
@@ -42,14 +59,22 @@ presubmits:
       preset-kind-volume-mounts: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         securityContext:
           privileged: true
         command:
         - runner.sh
         args:
         - scripts/test-infra/build-image.sh
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
   - name: pull-node-feature-discovery-operator-build-gh-pages
+    cluster: eks-prow-build-cluster
     always_run: true
     skip_branches:
     - gh-pages
@@ -62,10 +87,17 @@ presubmits:
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
         securityContext:
           privileged: true
         command:
         - runner.sh
         args:
         - scripts/test-infra/build-gh-pages.sh
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi

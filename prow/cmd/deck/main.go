@@ -32,6 +32,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -50,7 +51,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/test-infra/prow/flagutil"
+	pkgFlagutil "k8s.io/test-infra/pkg/flagutil"
 	"k8s.io/test-infra/prow/pjutil/pprof"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -112,47 +113,38 @@ const (
 )
 
 type options struct {
-	config                 configflagutil.ConfigOptions
-	pluginsConfig          pluginsflagutil.PluginOptions
-	instrumentation        prowflagutil.InstrumentationOptions
-	kubernetes             prowflagutil.KubernetesOptions
-	github                 prowflagutil.GitHubOptions
-	tideURL                string
-	hookURL                string
-	oauthURL               string
-	githubOAuthConfigFile  string
-	cookieSecretFile       string
-	redirectHTTPTo         string
-	hiddenOnly             bool
-	pregeneratedData       string
-	staticFilesLocation    string
-	templateFilesLocation  string
-	showHidden             bool
-	spyglass               bool
-	spyglassFilesLocation  string
-	storage                prowflagutil.StorageClientOptions
-	gcsCookieAuth          bool
-	rerunCreatesJob        bool
-	allowInsecure          bool
-	timeoutListingProwJobs int
-	dryRun                 bool
-	tenantIDs              flagutil.Strings
+	config                configflagutil.ConfigOptions
+	pluginsConfig         pluginsflagutil.PluginOptions
+	instrumentation       prowflagutil.InstrumentationOptions
+	kubernetes            prowflagutil.KubernetesOptions
+	github                prowflagutil.GitHubOptions
+	tideURL               string
+	hookURL               string
+	oauthURL              string
+	githubOAuthConfigFile string
+	cookieSecretFile      string
+	redirectHTTPTo        string
+	hiddenOnly            bool
+	pregeneratedData      string
+	staticFilesLocation   string
+	templateFilesLocation string
+	showHidden            bool
+	spyglass              bool
+	spyglassFilesLocation string
+	storage               prowflagutil.StorageClientOptions
+	gcsCookieAuth         bool
+	rerunCreatesJob       bool
+	allowInsecure         bool
+	controllerManager     prowflagutil.ControllerManagerOptions
+	dryRun                bool
+	tenantIDs             prowflagutil.Strings
 }
 
 func (o *options) Validate() error {
-	if err := o.kubernetes.Validate(false); err != nil {
-		return err
-	}
-	if err := o.github.Validate(o.dryRun); err != nil {
-		return err
-	}
-
-	if err := o.config.Validate(o.dryRun); err != nil {
-		return err
-	}
-
-	if err := o.pluginsConfig.Validate(o.dryRun); err != nil {
-		return err
+	for _, group := range []pkgFlagutil.OptionGroup{&o.kubernetes, &o.github, &o.config, &o.pluginsConfig, &o.controllerManager} {
+		if err := group.Validate(o.dryRun); err != nil {
+			return err
+		}
 	}
 
 	if o.oauthURL != "" {
@@ -190,11 +182,12 @@ func gatherOptions(fs *flag.FlagSet, args ...string) options {
 	fs.BoolVar(&o.gcsCookieAuth, "gcs-cookie-auth", false, "Use storage.cloud.google.com instead of signed URLs")
 	fs.BoolVar(&o.rerunCreatesJob, "rerun-creates-job", false, "Change the re-run option in Deck to actually create the job. **WARNING:** Only use this with non-public deck instances, otherwise strangers can DOS your Prow instance")
 	fs.BoolVar(&o.allowInsecure, "allow-insecure", false, "Allows insecure requests for CSRF and GitHub oauth.")
-	fs.IntVar(&o.timeoutListingProwJobs, "timeout-listing-prowjobs", 30, "Timeout for listing prowjobs in seconds.")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "Whether or not to make mutating API calls to GitHub.")
 	fs.Var(&o.tenantIDs, "tenant-id", "The tenantID(s) used by the ProwJobs that should be displayed by this instance of Deck. This flag can be repeated.")
 	o.config.AddFlags(fs)
 	o.instrumentation.AddFlags(fs)
+	o.controllerManager.TimeoutListingProwJobsDefault = 30 * time.Second
+	o.controllerManager.AddFlags(fs)
 	o.kubernetes.AddFlags(fs)
 	o.github.AddFlags(fs)
 	o.github.AllowAnonymous = true
@@ -292,6 +285,8 @@ func main() {
 		logrus.WithError(err).Fatal("Error starting config agent.")
 	}
 	cfg := configAgent.Config
+	disableClustersSet := sets.New[string](cfg().DisabledClusters...)
+	o.kubernetes.SetDisabledClusters(disableClustersSet)
 
 	var pluginAgent *plugins.ConfigAgent
 	if o.pluginsConfig.PluginConfigPath != "" {
@@ -373,7 +368,7 @@ func main() {
 				logrus.Info("Manager stopped gracefully.")
 			}
 		}()
-		mgrSyncCtx, mgrSyncCtxCancel := context.WithTimeout(context.Background(), time.Duration(o.timeoutListingProwJobs)*time.Second)
+		mgrSyncCtx, mgrSyncCtxCancel := context.WithTimeout(context.Background(), o.controllerManager.TimeoutListingProwJobs)
 		defer mgrSyncCtxCancel()
 		if synced := mgr.GetCache().WaitForCacheSync(mgrSyncCtx); !synced {
 			logrus.Fatal("Timed out waiting for cachesync")
@@ -398,7 +393,7 @@ func main() {
 			if err != nil {
 				logrus.WithError(err).Fatal("Error getting GitHub client.")
 			}
-			gitClient, err = o.github.GitClientFactory("", &o.config.InRepoConfigCacheDirBase, o.dryRun)
+			gitClient, err = o.github.GitClientFactory("", &o.config.InRepoConfigCacheDirBase, o.dryRun, false)
 			if err != nil {
 				logrus.WithError(err).Fatal("Error getting Git client.")
 			}
@@ -577,7 +572,7 @@ func prodOnlyMain(cfg config.Getter, pluginAgent *plugins.ConfigAgent, authCfgGe
 			},
 			hiddenOnly: o.hiddenOnly,
 			showHidden: o.showHidden,
-			tenantIDs:  sets.NewString(o.tenantIDs.Strings()...),
+			tenantIDs:  sets.New[string](o.tenantIDs.Strings()...),
 			cfg:        cfg,
 		}
 		go func() {
@@ -636,7 +631,7 @@ func prodOnlyMain(cfg config.Getter, pluginAgent *plugins.ConfigAgent, authCfgGe
 			},
 		})
 
-		repos := cfg().AllRepos.List()
+		repos := sets.List(cfg().AllRepos)
 
 		prStatusAgent := prstatus.NewDashboardAgent(repos, &githubOAuthConfig, logrus.WithField("client", "pr-status"))
 
@@ -739,25 +734,19 @@ func loadToken(file string) ([]byte, error) {
 
 func handleCached(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// This looks ridiculous but actually no-cache means "revalidate" and
-		// "max-age=0" just means there is no time in which it can skip
-		// revalidation. We also need to set must-revalidate because no-cache
-		// doesn't imply must-revalidate when using the back button
-		// https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9.1
-		// TODO: consider setting a longer max-age
-		// setting it this way means the content is always revalidated
-		w.Header().Set("Cache-Control", "public, max-age=0, no-cache, must-revalidate")
+		// Since all static assets have a cache busting parameter
+		// attached, which forces a reload whenever Deck is updated,
+		// we can send strong cache headers.
+		w.Header().Set("Cache-Control", "public, max-age=315360000") // 315360000 is 10 years, i.e. forever
 		next.ServeHTTP(w, r)
 	})
 }
 
 func setHeadersNoCaching(w http.ResponseWriter) {
-	// Note that we need to set both no-cache and no-store because only some
-	// browsers decided to (incorrectly) treat no-cache as "never store"
-	// IE "no-store". for good measure to cover older browsers we also set
-	// expires and pragma: https://stackoverflow.com/a/2068407
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Set("Pragma", "no-cache")
+	// This follows the "ignore IE6, but allow prehistoric HTTP/1.0-only proxies"
+	// recommendation from https://stackoverflow.com/a/2068407 to prevent clients
+	// from caching the HTTP response.
+	w.Header().Set("Cache-Control", "no-store, must-revalidate")
 	w.Header().Set("Expires", "0")
 }
 
@@ -786,7 +775,7 @@ func handleProwJobs(ja *jobs.JobAgent, log *logrus.Entry) http.HandlerFunc {
 		jobs := ja.ProwJobs()
 		omit := r.URL.Query().Get("omit")
 
-		if set := sets.NewString(strings.Split(omit, ",")...); set.Len() > 0 {
+		if set := sets.New[string](strings.Split(omit, ",")...); set.Len() > 0 {
 			for i := range jobs {
 				jobs[i].ManagedFields = nil
 				if set.Has(Annotations) {
@@ -989,7 +978,7 @@ func renderSpyglass(ctx context.Context, sg *spyglass.Spyglass, cfg config.Gette
 	var lensIndexes []int
 lensesLoop:
 	for i, lfc := range cfg().Deck.Spyglass.Lenses {
-		matches := sets.String{}
+		matches := sets.Set[string]{}
 		for _, re := range lfc.RequiredFiles {
 			found := false
 			for _, a := range artifactNames {
@@ -1011,7 +1000,7 @@ lensesLoop:
 			}
 		}
 
-		lensCache[i] = matches.List()
+		lensCache[i] = sets.List(matches)
 		lensIndexes = append(lensIndexes, i)
 	}
 
@@ -1459,8 +1448,21 @@ func handleSerialize(w http.ResponseWriter, name string, data interface{}, l *lo
 
 func handleConfig(cfg config.Getter, log *logrus.Entry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// TODO: add the ability to query for portions of the config?
-		handleSerialize(w, "config.yaml", cfg(), log)
+		// TODO: add the ability to query for any portions of the config?
+		k := r.URL.Query().Get("key")
+		switch k {
+		case "disabled-clusters":
+			l := sets.New[string](cfg().DisabledClusters...).UnsortedList()
+			sort.Strings(l)
+			handleSerialize(w, "disabled-clusters.yaml", l, log)
+		case "":
+			handleSerialize(w, "config.yaml", cfg(), log)
+		default:
+			msg := fmt.Sprintf("getting config for key %s is not supported", k)
+			log.Error(msg)
+			http.Error(w, msg, http.StatusInternalServerError)
+			return
+		}
 	}
 }
 

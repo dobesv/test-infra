@@ -1,6 +1,7 @@
 presubmits:
   kubernetes-sigs/sig-storage-lib-external-provisioner:
   - name: pull-sig-storage-lib-external-provisioner-build
+    cluster: eks-prow-build-cluster
     always_run: true
     decorate: true
     path_alias: sigs.k8s.io/sig-storage-lib-external-provisioner
@@ -10,12 +11,20 @@ presubmits:
       description: Build test in sig-storage-lib-external-provisioner repo.
     spec:
       containers:
-      - image: golang:1.19
+      - image: public.ecr.aws/docker/library/golang:1.19
         command:
         # Plain make runs also verify
         - make
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi
 
   - name: pull-sig-storage-lib-external-provisioner-unit
+    cluster: eks-prow-build-cluster
     always_run: true
     decorate: true
     path_alias: sigs.k8s.io/sig-storage-lib-external-provisioner
@@ -25,8 +34,15 @@ presubmits:
       description: Unit tests in sig-storage-lib-external-provisioner repo.
     spec:
       containers:
-      - image: golang:1.19
+      - image: public.ecr.aws/docker/library/golang:1.19
         command:
         - make
         args:
         - test
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 2
+            memory: 4Gi

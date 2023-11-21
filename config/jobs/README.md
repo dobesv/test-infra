@@ -95,7 +95,7 @@ presubmits:
     always_run: true
     spec:
       containers:
-      - image: golang:1.12.5
+      - image: public.ecr.aws/docker/library/golang:1.12.5
         command:
         - /bin/bash
         args:
@@ -136,7 +136,7 @@ periodics:
     path_alias: "sigs.k8s.io/cluster-api-provider-aws"
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
       command:
       - "./scripts/ci-aws-cred-test.sh"
 ```
@@ -216,8 +216,9 @@ accomplish this, eg:
 # from test-infra root
 $ go run ./releng/config-forker \
   --job-config $(pwd)/config/jobs \
-  --version 1.15 \
-  --output $(pwd)/config/jobs/kubernetes/sig-release/release-branch-jobs/1.15.yaml
+  --version 1.27 \
+  --go-version 1.20.2 \
+  --output $(pwd)/config/jobs/kubernetes/sig-release/release-branch-jobs/1.27.yaml
 ```
 
 [prow.k8s.io]: https://prow.k8s.io

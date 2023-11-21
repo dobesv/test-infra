@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/strings/slices"
 
 	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	cfg "k8s.io/test-infra/prow/config"
@@ -51,6 +52,14 @@ var k8sProw = flag.Bool("k8s-prow", true, "If the config is for k8s prow cluster
 
 // Loaded at TestMain.
 var c *cfg.Config
+
+func isCritical(clusterName string) bool {
+	return clusterName == "k8s-infra-prow-build"
+}
+
+func isEKSCluster(clusterName string) bool {
+	return clusterName == "eks-prow-build-cluster"
+}
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -429,8 +438,8 @@ func validateImagePushingImage(spec *coreapi.PodSpec) error {
 func TestTrustedJobSecretsRestricted(t *testing.T) {
 	type labels map[string]string
 
-	getSecretsFromPreset := func(labels labels) sets.String {
-		secrets := sets.NewString()
+	getSecretsFromPreset := func(labels labels) sets.Set[string] {
+		secrets := sets.New[string]()
 		for _, preset := range c.Presets {
 			match := true
 			for k, v1 := range preset.Labels {
@@ -457,11 +466,11 @@ func TestTrustedJobSecretsRestricted(t *testing.T) {
 	}
 
 	secretsRestricted := map[string]struct {
-		secrets            sets.String
+		secrets            sets.Set[string]
 		isTrusted          bool
 		allowedInPresubmit bool
 	}{
-		"kubernetes-sigs/sig-storage-local-static-provisioner": {secrets: sets.NewString("sig-storage-local-static-provisioner-pusher"), isTrusted: true},
+		"kubernetes-sigs/sig-storage-local-static-provisioner": {secrets: sets.New[string]("sig-storage-local-static-provisioner-pusher"), isTrusted: true},
 		"kubernetes-csi/csi-driver-nfs":                        {secrets: getSecretsFromPreset(labels{"preset-azure-cred": "true"}), allowedInPresubmit: true},
 		"kubernetes-csi/csi-driver-smb":                        {secrets: getSecretsFromPreset(labels{"preset-azure-cred": "true"}), allowedInPresubmit: true},
 		"kubernetes-sigs/azuredisk-csi-driver":                 {secrets: getSecretsFromPreset(labels{"preset-azure-cred": "true"}), allowedInPresubmit: true},
@@ -473,12 +482,12 @@ func TestTrustedJobSecretsRestricted(t *testing.T) {
 		"kubernetes-sigs/sig-windows":                          {secrets: getSecretsFromPreset(labels{"preset-azure-cred": "true"}), allowedInPresubmit: true},
 		"kubernetes/sig-cloud-provider":                        {secrets: getSecretsFromPreset(labels{"preset-azure-cred": "true"}), allowedInPresubmit: true},
 		"kubernetes/sig-network":                               {secrets: getSecretsFromPreset(labels{"preset-azure-cred": "true"}), allowedInPresubmit: true},
-		"kubernetes/sig-release":                               {secrets: getSecretsFromPreset(labels{"preset-azure-cred": "true"})},
+		"kubernetes/sig-release":                               {secrets: getSecretsFromPreset(labels{"preset-azure-cred": "true"}), allowedInPresubmit: true},
 		"kubernetes-sigs/cluster-api-provider-azure":           {secrets: getSecretsFromPreset(labels{"preset-azure-cred-only": "true"}), allowedInPresubmit: true},
 	}
-	allSecrets := sets.String{}
+	allSecrets := sets.Set[string]{}
 	for _, s := range secretsRestricted {
-		allSecrets.Insert(s.secrets.List()...)
+		allSecrets.Insert(sets.List(s.secrets)...)
 	}
 
 	isSecretUsedByContainer := func(secret string, container coreapi.Container) bool {
@@ -542,14 +551,14 @@ func TestTrustedJobSecretsRestricted(t *testing.T) {
 		org, project, _ := getJobOrgProjectBasename(job.SourcePath)
 		s, ok := secretsRestricted[filepath.Join(org, project)]
 		allowedInPresubmit := ok && s.allowedInPresubmit
-		for _, secret := range allSecrets.List() {
+		for _, secret := range sets.List(allSecrets) {
 			if isSecretUsed(secret, job.JobBase) && !allowedInPresubmit {
 				t.Errorf("%q defined in %q may not use secret %q in %q cluster", job.Name, job.SourcePath, secret, job.Cluster)
 			}
 		}
 	}
 
-	secretsCanUseByPath := func(path string) sets.String {
+	secretsCanUseByPath := func(path string) sets.Set[string] {
 		org, project, basename := getJobOrgProjectBasename(path)
 		s, ok := secretsRestricted[filepath.Join(org, project)]
 		if !ok || (s.isTrusted && basename != fmt.Sprintf("%s-trusted.yaml", project)) {
@@ -574,7 +583,7 @@ func TestTrustedJobSecretsRestricted(t *testing.T) {
 			continue
 		}
 		secretsCanUse := secretsCanUseByPath(job.SourcePath)
-		for _, secret := range allSecrets.List() {
+		for _, secret := range sets.List(allSecrets) {
 			if secretsCanUse != nil && secretsCanUse.Has(secret) {
 				t.Logf("allow secret %v for job %s defined in %s", secret, job.Name, job.SourcePath)
 				continue
@@ -782,6 +791,13 @@ func hasArg(wanted string, args []string) bool {
 	return false
 }
 
+func checkBootstrapImage(jobName, imageName string) error {
+	if strings.Contains(imageName, "bootstrap") {
+		return fmt.Errorf("job %s: image %s has been decommissioned", jobName, imageName)
+	}
+	return nil
+}
+
 func checkScenarioArgs(jobName, imageName string, args []string) error {
 	// env files/scenarios validation
 	scenarioArgs := false
@@ -800,24 +816,12 @@ func checkScenarioArgs(jobName, imageName string, args []string) error {
 		}
 	}
 
-	if scenario == "" {
-		if !scenarioArgs {
-			if strings.Contains(imageName, "kubekins-e2e") ||
-				strings.Contains(imageName, "bootstrap") ||
-				strings.Contains(imageName, "gcloud-in-go") {
-				return fmt.Errorf("job %s: image %s uses bootstrap.py and need scenario args", jobName, imageName)
-			}
-			return nil
-		}
-
-	} else {
-		if _, err := os.Stat(fmt.Sprintf("../../../scenarios/%s.py", scenario)); err != nil {
-			return fmt.Errorf("job %s: scenario %s does not exist: %s", jobName, scenario, err)
-		}
-
-		if !scenarioArgs {
-			return fmt.Errorf("job %s: set --scenario=%s and will need scenario args", jobName, scenario)
-		}
+	if scenario != "" {
+		return fmt.Errorf("job %s: scenario (%s) based bootstrap.py jobs are not supported",
+			jobName, scenario)
+	}
+	if scenarioArgs {
+		return fmt.Errorf("job %s: scenario based bootstrap.py jobs are not supported", jobName)
 	}
 
 	// shared build args
@@ -947,6 +951,14 @@ func checkScenarioArgs(jobName, imageName string, args []string) error {
 	return nil
 }
 
+func TestPreSubmitPathAlias(t *testing.T) {
+	for _, job := range c.AllStaticPresubmits([]string{"kubernetes/kubernetes"}) {
+		if job.PathAlias != "k8s.io/kubernetes" {
+			t.Errorf("Invalid PathAlias (%s) in job %s for kubernetes/kubernetes repository", job.Name, job.PathAlias)
+		}
+	}
+}
+
 // TestValidScenarioArgs makes sure all scenario args in job configs are valid
 func TestValidScenarioArgs(t *testing.T) {
 	for _, job := range c.AllStaticPresubmits(nil) {
@@ -954,6 +966,9 @@ func TestValidScenarioArgs(t *testing.T) {
 			if err := checkScenarioArgs(job.Name, job.Spec.Containers[0].Image, job.Spec.Containers[0].Args); err != nil {
 				t.Errorf("Invalid Scenario Args : %s", err)
 			}
+		}
+		if err := checkBootstrapImage(job.Name, job.Spec.Containers[0].Image); err != nil {
+			t.Errorf("Invalid image : %s", err)
 		}
 	}
 
@@ -963,6 +978,9 @@ func TestValidScenarioArgs(t *testing.T) {
 				t.Errorf("Invalid Scenario Args : %s", err)
 			}
 		}
+		if err := checkBootstrapImage(job.Name, job.Spec.Containers[0].Image); err != nil {
+			t.Errorf("Invalid image : %s", err)
+		}
 	}
 
 	for _, job := range c.AllPeriodics() {
@@ -970,6 +988,9 @@ func TestValidScenarioArgs(t *testing.T) {
 			if err := checkScenarioArgs(job.Name, job.Spec.Containers[0].Image, job.Spec.Containers[0].Args); err != nil {
 				t.Errorf("Invalid Scenario Args : %s", err)
 			}
+		}
+		if err := checkBootstrapImage(job.Name, job.Spec.Containers[0].Image); err != nil {
+			t.Errorf("Invalid image : %s", err)
 		}
 	}
 }
@@ -1072,8 +1093,7 @@ func TestKubernetesMergeBlockingJobsCIPolicy(t *testing.T) {
 		}
 		// job Pod must qualify for Guaranteed QoS
 		errs := verifyPodQOSGuaranteed(job.Spec, true)
-		// jobs must run on k8s-infra-prow-build cluster
-		if job.Cluster != "k8s-infra-prow-build" {
+		if !isCritical(job.Cluster) {
 			errs = append(errs, fmt.Errorf("must run in cluster: k8s-infra-prow-build, found: %v", job.Cluster))
 		}
 		branches := job.Branches
@@ -1087,6 +1107,21 @@ func TestKubernetesMergeBlockingJobsCIPolicy(t *testing.T) {
 	t.Logf("summary: %4d/%4d jobs fail to meet kubernetes/kubernetes merge-blocking CI policy", jobsToFix, len(jobs))
 }
 
+func TestClusterName(t *testing.T) {
+	jobsToFix := 0
+	jobs := allStaticJobs()
+	for _, job := range jobs {
+		// Useful for identifiying how many jobs are running a specific cluster by omitting from this list
+		validClusters := []string{"default", "test-infra-trusted", "k8s-infra-kops-prow-build", "k8s-infra-prow-build", "k8s-infra-prow-build-trusted", "eks-prow-build-cluster"}
+		if !slices.Contains(validClusters, job.Cluster) || job.Cluster == "" {
+			err := fmt.Errorf("must run in one of these clusters: %v, found: %v", validClusters, job.Cluster)
+			t.Errorf("%v: %v", job.Name, err)
+			jobsToFix++
+		}
+
+	}
+	t.Logf("summary: %4d/%4d jobs fail to meet sig-k8s-infra cluster name policy", jobsToFix, len(jobs))
+}
 func TestKubernetesReleaseBlockingJobsCIPolicy(t *testing.T) {
 	jobsToFix := 0
 	jobs := allStaticJobs()
@@ -1097,9 +1132,8 @@ func TestKubernetesReleaseBlockingJobsCIPolicy(t *testing.T) {
 		}
 		// job Pod must qualify for Guaranteed QoS
 		errs := verifyPodQOSGuaranteed(job.Spec, true)
-		// jobs must run on k8s-infra-prow-build cluster
-		if job.Cluster != "k8s-infra-prow-build" {
-			errs = append(errs, fmt.Errorf("must run in cluster: k8s-infra-prow-build, found: %v", job.Cluster))
+		if !isCritical(job.Cluster) && !isEKSCluster(job.Cluster) {
+			errs = append(errs, fmt.Errorf("must run in cluster: k8s-infra-prow-build or eks-prow-build-cluster, found: %v", job.Cluster))
 		}
 		if len(errs) > 0 {
 			jobsToFix++
@@ -1115,8 +1149,7 @@ func TestK8sInfraProwBuildJobsCIPolicy(t *testing.T) {
 	jobsToFix := 0
 	jobs := allStaticJobs()
 	for _, job := range jobs {
-		// Only consider Pods destined for the k8s-infra-prow-builds cluster
-		if job.Spec == nil || job.Cluster != "k8s-infra-prow-build" {
+		if job.Spec == nil || (!isCritical(job.Cluster) && !isEKSCluster(job.Cluster)) {
 			continue
 		}
 		// job Pod must qualify for Guaranteed QoS

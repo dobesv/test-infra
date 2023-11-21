@@ -89,8 +89,7 @@ func TestGatherOptions(t *testing.T) {
 					ConfigPathFlagName:                    "config-path",
 					JobConfigPathFlagName:                 "job-config-path",
 					SupplementalProwConfigsFileNameSuffix: "_prowconfig.yaml",
-					InRepoConfigCacheSize:                 100,
-					InRepoConfigCacheCopies:               1,
+					InRepoConfigCacheSize:                 200,
 				},
 				pluginsConfig: pluginsflagutil.PluginOptions{
 					PluginConfigPath:                         "/etc/plugins/plugins.yaml",
@@ -127,21 +126,21 @@ func TestGetDenyList(t *testing.T) {
 	tests := []struct {
 		name string
 		o    options
-		want sets.String
+		want sets.Set[string]
 	}{
 		{
 			name: "black list only",
 			o: options{
 				addedPresubmitDenylist: newSetStringsFlagForTest("a", "b"),
 			},
-			want: sets.NewString("a", "b"),
+			want: sets.New[string]("a", "b"),
 		},
 		{
 			name: "deny list only",
 			o: options{
 				addedPresubmitDenylist: newSetStringsFlagForTest("c", "d"),
 			},
-			want: sets.NewString("c", "d"),
+			want: sets.New[string]("c", "d"),
 		},
 	}
 

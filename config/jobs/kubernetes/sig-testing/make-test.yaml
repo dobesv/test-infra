@@ -21,7 +21,7 @@ presubmits:
         runAsUser: 2001
         runAsGroup: 2010
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           securityContext:
             allowPrivilegeEscalation: false
           command:
@@ -38,16 +38,16 @@ presubmits:
   - name: pull-kubernetes-unit-go-compatibility
     annotations:
       fork-per-release: "true"
-      testgrid-dashboards: sig-testing-canaries
+      fork-per-release-replacements: "GO_VERSION= -> GO_VERSION={{.GoVersion}}"
+      testgrid-dashboards: presubmits-kubernetes-blocking
       description: run with GO_VERSION set to the original go version used for this branch
     decorate: true
     cluster: k8s-infra-prow-build
     skip_branches:
-    - release-\d+.\d+ # per-release job
+    - .* # per-release job
     labels:
       preset-service-account: "true"
-    optional: true
-    always_run: false
+    always_run: true
     path_alias: k8s.io/kubernetes
     spec:
       # unit tests have no business requiring root or doing privileged operations
@@ -57,7 +57,7 @@ presubmits:
         runAsUser: 2001
         runAsGroup: 2010
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           securityContext:
             allowPrivilegeEscalation: false
           command:
@@ -132,7 +132,7 @@ presubmits:
         runAsUser: 2001
         runAsGroup: 2010
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-go-canary
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-go-canary
           securityContext:
             allowPrivilegeEscalation: false
           command:
@@ -172,7 +172,7 @@ periodics:
         runAsUser: 2001
         runAsGroup: 2010
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20231117-8a628a317a-master
           securityContext:
             allowPrivilegeEscalation: false
           command:
@@ -186,32 +186,3 @@ periodics:
             requests:
               cpu: 4
               memory: "36Gi"
-  - interval: 6h
-    name: ci-kubernetes-generate-make-test-count10
-    annotations:
-      testgrid-dashboards: sig-testing-canaries
-    decorate: true
-    extra_refs:
-      - org: kubernetes
-        repo: kubernetes
-        base_ref: master
-        path_alias: k8s.io/kubernetes
-    labels:
-      preset-service-account: "true"
-    spec:
-      # unit tests have no business requiring root or doing privileged operations
-      securityContext:
-        # NOTE: these are arbitrary non-root values. They don't exist in the
-        # image and don't need to, the unit tests should only write to TMPDIR
-        runAsUser: 2001
-        runAsGroup: 2010
-      containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230207-192d5afee3-master
-          securityContext:
-            allowPrivilegeEscalation: false
-          command:
-            - runner.sh
-            - bash
-            - -c
-          args:
-            - 'make test KUBE_RACE=-race KUBE_TIMEOUT=--timeout=600s GOFLAGS=-count=10'
